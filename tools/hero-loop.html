@@ -1,0 +1,353 @@
+<!doctype html><html><head>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }</script>
+</head><body style="margin:0;background:#0b0b0a">
+<canvas id="c" width="1920" height="1080"></canvas>
+<script type="module">
+/*
+ * Creed Co hero mark: a heavy, polished gold band, like a ring, shaped into
+ * an infinity sign. Rendered as a real 3D model (three.js): the band has a
+ * rounded, comfort-fit profile and mirror-polished gold reflecting a dark
+ * studio with a few soft lights, and one strand rides over the other at the
+ * crossing.
+ *
+ *  window.frame(i)       one frame of the 8-second seamless turning loop
+ *  window.introFrame(i)  one frame of the 5-second intro: molten gold pours out
+ *                        from the crossing along all four arms, smoke and embers
+ *                        boil off, and it cools into the polished band. Its last
+ *                        frame is loop frame N-1, so the page hands off to loop
+ *                        frame 0 with no jump.
+ *
+ *  Render with: python3 tools/render-loop.py
+ */
+import * as THREE from 'three'
+
+const W = 1920, H = 1080, PI = Math.PI
+const N_FRAMES = 240              // loop: 8 s at 30 fps
+const INTRO_FRAMES = 150          // intro: 5 s at 30 fps
+const A = 300                     // half-width of the infinity (px)
+const YS = 1.32                   // lobe height
+const HW = 37, HD = 27            // band half-width (in the plane) and half-depth
+const LIFT = 36, LIFT_R = 95      // how far the front strand rides over the back at the crossing
+const CX = W * 0.76, CY = H * 0.52
+
+const out = document.getElementById('c')
+const ctx = out.getContext('2d')
+const smooth = (x) => x * x * (3 - 2 * x)
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v))
+
+/* ── three.js scene ─────────────────────────────────────────────────────── */
+const glc = document.createElement('canvas'); glc.width = W; glc.height = H
+const renderer = new THREE.WebGLRenderer({ canvas: glc, alpha: true, antialias: true, preserveDrawingBuffer: true })
+renderer.setPixelRatio(1)
+renderer.setSize(W, H, false)
+renderer.setClearColor(0x000000, 0)
+renderer.toneMapping = THREE.NeutralToneMapping
+renderer.toneMappingExposure = 1.12
+renderer.outputColorSpace = THREE.SRGBColorSpace
+
+const FOC = 1700
+const camera = new THREE.PerspectiveCamera((2 * Math.atan(H / 2 / FOC) * 180) / PI, W / H, 10, 6000)
+camera.position.set(0, 0, FOC)
+const scene = new THREE.Scene()
+
+/* A dark studio with a few soft boxes: this is what the polished gold reflects. */
+function studio() {
+  const s = new THREE.Scene()
+  s.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x1c1206).multiplyScalar(0.6), side: THREE.BackSide })))
+  const box = (w, h, pos, color, k) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.DoubleSide }))
+    m.position.set(...pos); m.lookAt(0, 0, 0); s.add(m)
+  }
+  box(24, 9, [-14, 22, 18], 0xfff0d0, 7)     // big key, upper left front
+  box(4, 30, [26, 4, 10], 0xffe8c0, 5)        // tall strip, right
+  box(36, 4, [0, -12, 30], 0xffd9a0, 2.2)     // low fill from the front
+  box(30, 14, [8, 10, 40], 0xffd690, 1.1)     // broad soft fill behind the camera, so the face of the band glows
+  box(3, 24, [-24, -2, 14], 0xffe0b0, 3)      // thin strip, left
+  box(16, 16, [-10, 6, -30], 0xffb040, 2.2)   // amber rim from behind
+  box(18, 18, [20, -6, -24], 0xffc060, 1.6)   // second rim, lower right
+  box(60, 60, [0, -45, 0], 0x4a2c08, 1)       // warm floor bounce
+  return s
+}
+const pmrem = new THREE.PMREMGenerator(renderer)
+scene.environment = pmrem.fromScene(studio(), 0.015).texture
+const key = new THREE.DirectionalLight(0xffdca0, 1.2); key.position.set(-600, 700, 900); scene.add(key)
+
+/* Heat uniforms shared by every arm; per-arm reveal lives on each material. */
+const HOT = { uP: { value: 0 }, uHeat: { value: 0 } }
+function goldMaterial(reveal) {
+  const m = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color('#ffcf5c'), metalness: 1, roughness: 0.15,
+    clearcoat: 0.2, clearcoatRoughness: 0.1, envMapIntensity: 1.35,
+    emissive: new THREE.Color('#5a3400'), emissiveIntensity: 0.22,   // warm, as if lit from inside
+  })
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, HOT, { uReveal: reveal })
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute float aU; attribute float aS;
+        uniform float uP; uniform float uHeat; uniform float uReveal;
+        varying float vHot;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        // molten: hot just behind the running front, cooling further back
+        float h = uHeat * clamp(1.0 - (uReveal - aU) / 0.42, 0.0, 1.0);
+        vHot = h;
+        transformed += objectNormal * sin(aS * 0.075 - uP * 46.0) * 5.5 * h;`)
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying float vHot;`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        vec3 molten = mix(vec3(1.0, 0.32, 0.04), vec3(1.0, 0.86, 0.52), vHot * vHot);
+        totalEmissiveRadiance += molten * vHot * 3.2;`)
+  }
+  return m
+}
+
+/* Lemniscate (y up). The two strands through the crossing: t = PI/2 runs
+   quadrant I -> III ("/", rides in front); t = 3PI/2 runs II -> IV ("\"). */
+const lem = (t) => {
+  const s = Math.sin(t), c = Math.cos(t), d = 1 + s * s
+  return [A * c / d, A * YS * s * c / d]
+}
+// four arms, each from the crossing out to a tip, so the pour can run outward
+const ARMS = [
+  { t0: PI / 2, t1: 0, z: 1 },             // I
+  { t0: PI / 2, t1: PI, z: 1 },            // III
+  { t0: 3 * PI / 2, t1: PI, z: -1 },       // II
+  { t0: 3 * PI / 2, t1: 2 * PI, z: -1 },   // IV
+]
+const SEG = 240, RING = 72, SE = 3.2   // samples along, around; superellipse profile (rounded, comfort-fit band)
+
+function armPoint(arm, u) {
+  const t = arm.t0 + (arm.t1 - arm.t0) * u
+  const [x, y] = lem(t)
+  const z = arm.z * LIFT * Math.exp(-(x * x + y * y) / (LIFT_R * LIFT_R))
+  return new THREE.Vector3(x, y, z)
+}
+
+function armGeometry(arm) {
+  const pos = [], nor = [], au = [], as = [], idx = []
+  const pts = Array.from({ length: SEG + 1 }, (_, i) => armPoint(arm, (i / SEG) * 1.008))   // a hair past the tip so the arms overlap with no seam
+  let len = 0
+  for (let i = 0; i <= SEG; i++) {
+    if (i) len += pts[i].distanceTo(pts[i - 1])
+    const T = (i < SEG ? pts[i + 1].clone().sub(pts[i]) : pts[i].clone().sub(pts[i - 1])).normalize()
+    let N = new THREE.Vector3(-T.y, T.x, 0).normalize()
+    const B = new THREE.Vector3().crossVectors(T, N).normalize()
+    N = new THREE.Vector3().crossVectors(B, T).normalize()
+    for (let k = 0; k <= RING; k++) {
+      const a = (k / RING) * 2 * PI, ca = Math.cos(a), sa = Math.sin(a)
+      const ex = Math.sign(ca) * Math.pow(Math.abs(ca), 2 / SE), ez = Math.sign(sa) * Math.pow(Math.abs(sa), 2 / SE)
+      const px = ex * HW, pz = ez * HD
+      // superellipse normal
+      let nx = Math.sign(px) * Math.pow(Math.abs(px / HW), SE - 1) / HW
+      let nz = Math.sign(pz) * Math.pow(Math.abs(pz / HD), SE - 1) / HD
+      const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl
+      const p = pts[i].clone().addScaledVector(N, px).addScaledVector(B, pz)
+      const n = N.clone().multiplyScalar(nx).addScaledVector(B, nz).normalize()
+      pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); au.push(i / SEG); as.push(len)
+    }
+  }
+  for (let i = 0; i < SEG; i++) for (let k = 0; k < RING; k++) {
+    const a = i * (RING + 1) + k, b = a + RING + 1
+    idx.push(a, b, a + 1, b, b + 1, a + 1)
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
+  g.setAttribute('aU', new THREE.Float32BufferAttribute(au, 1))
+  g.setAttribute('aS', new THREE.Float32BufferAttribute(as, 1))
+  g.setIndex(idx)
+  return g
+}
+
+const group = new THREE.Group()
+scene.add(group)
+const meshes = ARMS.map((arm) => {
+  const reveal = { value: 1 }
+  const mesh = new THREE.Mesh(armGeometry(arm), goldMaterial(reveal))
+  // a liquid bead on the running end while it pours
+  const bead = new THREE.Mesh(new THREE.SphereGeometry(HW * 1.06, 40, 24), goldMaterial(reveal))
+  bead.geometry.setAttribute('aU', new THREE.Float32BufferAttribute(new Array(bead.geometry.attributes.position.count).fill(1), 1))
+  bead.geometry.setAttribute('aS', new THREE.Float32BufferAttribute(new Array(bead.geometry.attributes.position.count).fill(0), 1))
+  group.add(mesh, bead)
+  return { arm, mesh, bead, reveal }
+})
+
+function setPose(i, fx) {
+  const th = (2 * PI * (((i % N_FRAMES) + N_FRAMES) % N_FRAMES)) / N_FRAMES
+  const v = {
+    yaw: (24 * Math.sin(th)) * PI / 180,
+    pitch: (7 * Math.sin(2 * th + 0.6) - 4) * PI / 180,
+    roll: (3 * Math.sin(th + 1.2)) * PI / 180,
+    scale: 0.9 + 0.025 * Math.sin(2 * th),
+    bob: 12 * Math.sin(th + 0.4),
+  }
+  if (fx) { v.scale += fx.dScale; v.bob += fx.dCy; v.pitch += fx.dPitch; v.yaw += fx.dYaw }
+  group.rotation.set(v.pitch, v.yaw, v.roll, 'YXZ')
+  group.scale.setScalar(v.scale)
+  group.position.set(CX - W / 2, -(CY + v.bob - H / 2), 0)
+  group.updateMatrixWorld(true)
+  return v
+}
+const toScreen = (p) => {
+  const q = p.clone().applyMatrix4(group.matrixWorld).project(camera)
+  return [(q.x + 1) / 2 * W, (1 - q.y) / 2 * H]
+}
+
+function setReveal(fx) {
+  for (const m of meshes) {
+    const r = fx ? fx.reveal[m.arm.z > 0 ? 0 : 1] : 1
+    m.reveal.value = r
+    const segs = Math.floor(r * SEG)
+    m.mesh.geometry.setDrawRange(0, segs * RING * 6)
+    m.mesh.visible = segs > 0
+    const show = fx && r > 0.001 && r < 0.999
+    m.bead.visible = !!show
+    if (show) {
+      m.bead.position.copy(armPoint(m.arm, r))
+      m.bead.scale.set(1, 1, HD / HW * 1.1)
+    }
+  }
+  HOT.uHeat.value = fx ? fx.heat : 0
+  HOT.uP.value = fx ? fx.p : 0
+}
+
+/* ── 2-D compositing: backdrop, floor reflection, bloom, smoke, embers ──── */
+function draw(i, fx) {
+  const v = setPose(i, fx)
+  setReveal(fx)
+  renderer.render(scene, camera)
+  const cy = CY + v.bob
+
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none'
+  ctx.fillStyle = '#0b0b0a'; ctx.fillRect(0, 0, W, H)
+  const glow = ctx.createRadialGradient(CX, cy, 0, CX, cy, A * 2.4)
+  glow.addColorStop(0, 'rgba(120,90,24,0.30)'); glow.addColorStop(0.45, 'rgba(60,44,12,0.16)'); glow.addColorStop(1, 'rgba(11,11,10,0)')
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+  if (fx) introBackdrop(cy, fx)
+
+  // reflection on a dark polished floor
+  const floorY = cy + A * 0.62 * v.scale
+  ctx.save(); ctx.globalAlpha = 0.17; ctx.filter = 'blur(5px)'
+  ctx.translate(0, 2 * floorY); ctx.scale(1, -1); ctx.drawImage(glc, 0, 0); ctx.restore()
+  const fade = ctx.createLinearGradient(0, floorY, 0, floorY + 300)
+  fade.addColorStop(0, 'rgba(11,11,10,0.15)'); fade.addColorStop(1, 'rgba(11,11,10,1)')
+  ctx.fillStyle = fade; ctx.fillRect(0, floorY, W, H - floorY)
+
+  // bloom (much stronger while the metal is molten), then the band itself
+  const hot = fx ? fx.heat : 0
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'
+  ctx.filter = 'blur(26px)'; ctx.globalAlpha = 0.26 + 0.4 * hot; ctx.drawImage(glc, 0, 0)
+  if (hot > 0.01) { ctx.filter = 'blur(70px)'; ctx.globalAlpha = 0.5 * hot; ctx.drawImage(glc, 0, 0) }
+  ctx.restore()
+  ctx.drawImage(glc, 0, 0)
+  if (fx) introFront(fx)
+
+  const vg = ctx.createRadialGradient(CX, H / 2, H * 0.5, CX, H / 2, W * 0.85)
+  vg.addColorStop(0, 'rgba(11,11,10,0)'); vg.addColorStop(1, 'rgba(11,11,10,0.75)')
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H)
+}
+
+/* ── intro: the pour ───────────────────────────────────────────────────── */
+let seed = 7
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+const SPR = document.createElement('canvas'); SPR.width = SPR.height = 256
+{
+  const g = SPR.getContext('2d'), r = g.createRadialGradient(128, 128, 0, 128, 128, 128)
+  r.addColorStop(0, 'rgba(255,255,255,0.55)'); r.addColorStop(0.45, 'rgba(255,255,255,0.22)'); r.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = r; g.fillRect(0, 0, 256, 256)
+}
+const tint = (rgb) => {
+  const c = document.createElement('canvas'); c.width = c.height = 256
+  const g = c.getContext('2d'); g.drawImage(SPR, 0, 0)
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = rgb; g.fillRect(0, 0, 256, 256)
+  return c
+}
+const SMOKE_WARM = tint('rgb(176,132,62)'), SMOKE_GREY = tint('rgb(120,104,84)')
+
+const POUR0 = 0.10, POUR1 = 0.62
+const DELAY = [0, 0.05]                    // the back strand starts a beat later
+const revealAt = (p, k) => smooth(clamp((p - POUR0 - DELAY[k]) / (POUR1 - POUR0 - DELAY[k])))
+
+const onMark = () => { const arm = ARMS[Math.floor(rnd() * 4)]; return { arm, u: rnd() } }
+const PUFFS = Array.from({ length: 110 }, () => ({
+  ...onMark(), born: 0.02 + rnd() * 0.7, life: 0.25 + rnd() * 0.35,
+  vy: 140 + rnd() * 220, vx: (rnd() - 0.5) * 90, r0: 40 + rnd() * 60, r1: 180 + rnd() * 260, sw: rnd() * 6.28, warm: rnd() < 0.6,
+}))
+const EMBERS = Array.from({ length: 170 }, () => ({
+  ...onMark(), born: 0.06 + rnd() * 0.66, life: 0.12 + rnd() * 0.22,
+  vy: 180 + rnd() * 420, vx: (rnd() - 0.5) * 160, sz: 1.2 + rnd() * 2.6, sw: rnd() * 6.28, fl: 8 + rnd() * 20,
+}))
+
+function introFx(i) {
+  const p = i / (INTRO_FRAMES - 1)
+  const settle = smooth(clamp((p - 0.05) / 0.88))
+  return {
+    p,
+    reveal: [revealAt(p, 0), revealAt(p, 1)],
+    heat: smooth(clamp(p / 0.12)) * (1 - smooth(clamp((p - 0.66) / 0.26))),
+    fade: 1 - smooth(clamp((p - 0.62) / 0.3)),
+    pool: (1 - smooth(clamp(p / 0.3))) * smooth(clamp(p / 0.08)),
+    dScale: 0.14 * (1 - settle), dCy: 26 * (1 - settle), dPitch: 0.10 * (1 - settle), dYaw: -0.18 * (1 - settle),
+  }
+}
+
+function introBackdrop(cy, fx) {
+  const hot = Math.min(1, fx.heat * 0.9 + fx.pool)
+  const g = ctx.createRadialGradient(CX, cy, 0, CX, cy, A * 2.2)
+  g.addColorStop(0, `rgba(255,128,32,${0.26 * hot})`); g.addColorStop(0.5, `rgba(150,70,14,${0.12 * hot})`); g.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  drawSmoke(fx, 0.5)
+}
+
+function drawSmoke(fx, amt) {
+  if (fx.fade <= 0) return
+  ctx.save(); ctx.globalCompositeOperation = 'screen'
+  for (const s of PUFFS) {
+    const age = (fx.p - s.born) / s.life
+    if (age <= 0 || age >= 1) continue
+    const [qx, qy] = toScreen(armPoint(s.arm, s.u)), t = age * s.life * 5
+    const x = qx + s.vx * t + 40 * Math.sin(s.sw + t * 1.7), y = qy - s.vy * t
+    const r = s.r0 + (s.r1 - s.r0) * age
+    ctx.globalAlpha = amt * fx.fade * Math.sin(PI * age) * 0.55
+    ctx.drawImage(s.warm ? SMOKE_WARM : SMOKE_GREY, x - r, y - r, r * 2, r * 2)
+  }
+  ctx.restore()
+}
+
+function introFront(fx) {
+  // a white-hot pool at the crossing before the gold runs out along the arms
+  if (fx.pool > 0.01) {
+    const [px, py] = toScreen(new THREE.Vector3(0, 0, LIFT)), r = 60 * fx.pool
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'
+    const g = ctx.createRadialGradient(px, py, 0, px, py, r * 2.2)
+    g.addColorStop(0, 'rgba(255,248,220,1)'); g.addColorStop(0.35, 'rgba(255,190,70,0.9)'); g.addColorStop(1, 'rgba(255,110,20,0)')
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r * 2.2, 0, 2 * PI); ctx.fill(); ctx.restore()
+  }
+  drawSmoke(fx, 0.2)
+  if (fx.fade <= 0) return
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'
+  for (const e of EMBERS) {
+    const age = (fx.p - e.born) / e.life
+    if (age <= 0 || age >= 1) continue
+    const [qx, qy] = toScreen(armPoint(e.arm, e.u)), t = age * e.life * 5
+    const x = qx + e.vx * t + 22 * Math.sin(e.sw + t * 3), y = qy - e.vy * t + 60 * t * t
+    const a = fx.fade * (1 - age) * (0.6 + 0.4 * Math.sin(e.fl * t + e.sw))
+    const r = e.sz * (1.2 - 0.6 * age) * 3.2
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+    g.addColorStop(0, `rgba(255,236,170,${a})`); g.addColorStop(0.18, `rgba(255,170,60,${a * 0.85})`); g.addColorStop(1, 'rgba(255,90,10,0)')
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * PI); ctx.fill()
+  }
+  ctx.restore()
+}
+
+window.N_FRAMES = N_FRAMES
+window.INTRO_FRAMES = INTRO_FRAMES
+window.frame = (i, type = 'image/png', q) => { draw(i); return out.toDataURL(type, q) }
+// intro frame i shows loop frame (N - INTRO + i), so the motion runs straight on into loop frame 0
+window.introFrame = (i, type = 'image/jpeg', q = 0.95) => {
+  draw(N_FRAMES - INTRO_FRAMES + i, i === INTRO_FRAMES - 1 ? undefined : introFx(i))
+  return out.toDataURL(type, q)
+}
+window.ready = true
+</script></body></html>

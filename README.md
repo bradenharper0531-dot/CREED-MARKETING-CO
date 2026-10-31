@@ -1,85 +1,119 @@
-# Creed — platform
+# Creed — public site
 
-Public site, rep area and owner dashboard for Creed Marketing.
-Built with Next.js 14 + Supabase. Black and gold, per the Creed Marketing design system.
+Vite + React + Tailwind. Logins run on Supabase and share the database with the
+Creed platform, so one account works everywhere and roles carry over.
 
-| Who | Sees |
-| --- | --- |
-| Anyone (logged out) | Public site + rep calculator preview + application form |
-| **Rep** (anyone who signs up) | **My Plan**: Rep Growth Plan (saved to their account), their own sales, weekly pillar check-in |
-| **Owner** (Braden, Peter) | Everything: Overview, Reps, Pipeline, Markets, **Margin plan** (Owner Plan), Settings |
-
----
-
-## Setup (about 20 minutes, one time)
-
-### 1. Create the database
-1. Go to [supabase.com](https://supabase.com) → **New project** (free tier is fine). Save the database password somewhere.
-2. Open **SQL Editor → New query**.
-3. Open `supabase/schema.sql`. **Change the two emails near the top** to your real login emails:
-   ```sql
-   insert into owner_emails (email) values
-     ('braden@example.com'),   -- ← your email, lowercase
-     ('peter@example.com');    -- ← Peter's email, lowercase
-   ```
-4. Paste the whole file and click **Run**.
-5. New query → paste all of `supabase/seed.sql` → **Run**. This loads the real markets and pay rules plus some **sample** reps and recruits (marked "sample"; remove them anytime from Settings).
-
-### 2. Set up email login
-In Supabase: **Authentication → URL Configuration**
-- **Site URL**: your live address (e.g. `https://creedmarketing.com`); use `http://localhost:3000` while testing.
-- **Redirect URLs**: add `https://YOUR-DOMAIN/auth/callback` and `http://localhost:3000/auth/callback`.
-
-"Confirm email" is on by default (new users click a link in their inbox before they can log in). Supabase's built-in email sender is rate-limited, so before launch connect your own SMTP under **Authentication → Emails → SMTP** (Resend or Postmark both work).
-
-### 3. Run it on your computer
-Install [Node.js 20+](https://nodejs.org), then in this folder:
+## Run it
 ```bash
-cp .env.example .env.local      # then fill in the 3 values (Supabase → Project Settings → API)
+cp .env.example .env    # fill in the Supabase keys (below)
 npm install
-npm run dev
+npm run dev             # http://localhost:5173
+npm run build           # static site in dist/ — deploy to Vercel / Netlify
 ```
-Open http://localhost:3000, click **Log in → Sign up** with your owner email, confirm the email, and you'll land on the owner dashboard.
+Without the keys the site still runs; the Log in window just says logins aren't connected.
 
-### 4. Put it online
-1. Push this folder to a GitHub repo.
-2. [vercel.com](https://vercel.com) → **Add New → Project** → import the repo.
-3. Add the same 3 environment variables (set `NEXT_PUBLIC_SITE_URL` to the real domain) → **Deploy**.
-4. Add your domain in Vercel, then update the Site URL / Redirect URLs in Supabase step 2.
+## Connect logins (one time)
+Use **one** Supabase project for this site and the platform.
 
----
+1. **If you haven't set up the database yet:** Supabase → SQL Editor → run
+   `supabase/schema.sql` (change the two owner emails at the top first), then
+   `supabase/seed.sql`. Already did this for the platform? Skip it.
+2. Supabase → Project Settings → API → copy the **Project URL** and **anon public key**
+   into `.env` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+   On Vercel/Netlify add the same two as environment variables.
+3. Supabase → Authentication → URL Configuration → add this site's address
+   (e.g. `https://creedmarketing.com` and `http://localhost:5173`) to **Redirect URLs**.
+   That's what makes the confirm-email and reset-password links come back here.
 
-## How owner access works (and why reps can't see margins)
-- Role is decided **only** by the `owner_emails` allowlist in the database. Typing a name at sign-up does nothing.
-- Full contract pay lives in its own table (`market_rates`) that the database refuses to return to anyone who isn't an owner (row-level security). Rep pages never even ask for it, so it never reaches a rep's browser, page source or network traffic.
-- Add or remove owners later in **Dashboard → Settings**. You can't remove your own owner role (so you can't lock yourself out).
-
-## Things to fill in
-| Where | What |
+## Who sees what
+| | Sees |
 | --- | --- |
-| `lib/content.ts` → `payStacks` | Payout stacks by monthly volume (shows on The Money) |
-| `lib/content.ts` → `pillars` | The `[fill in]` lines: team workouts, faith, books/trainings, financial habits |
-| `lib/content.ts` → `repsInGroup` | Number for the hero stat strip |
-| Dashboard → Markets | Arizona leads, Wyoming details, any rate changes |
-| `components/site/` / photo slots | Real team photos (replace the "Team photo" placeholders) |
+| Logged out | Whole site; calculator in rep pay |
+| Rep (anyone who signs up) | Same, plus their account menu |
+| Owner (emails in `owner_emails`) | Calculator gets **Owner view**: full contract pay, rep pay, spread per account / per rep / across the team. "Rep view" previews what reps see. |
 
-**Public pay numbers:** each market's "Pay line on public card" is what the public sees. It's seeded with the contract rates you listed. If you'd rather show rep pay publicly, or nothing, change it per market in Dashboard → Markets (leave it blank to hide).
+Owner status comes only from the `owner_emails` list in the database, never from a
+name typed at sign-up. Full contract rates live in the `market_rates` table, which the
+database only returns to owners — they never reach a rep's browser.
 
-## Daily use
-- **Log numbers:** Reps → click a rep → *Log numbers*, or **Import CSV** with `rep,date,sales,installs`.
-- **Link a rep to their login:** put the same email on their rep record that they signed up with. Then they see their own stats and their pillar check-ins show on your dashboard.
-- **Pipeline:** drag cards between stages (or use the stage dropdown on the card). Click a card for the notes thread. Each note records who wrote it. When someone hits **Signed**, you'll be offered a one-click "create rep".
-- **Application form** on the public site drops new people into the pipeline as *New lead*.
+## Hero logo + gold smoke
 
-## Project map
+**The mark.** On load, `public/creed-intro.mp4` (5 s) plays once: molten gold pours out
+from the crossing along all four arms, smoke and embers boil off, and it cools into a heavy,
+polished gold band shaped as an infinity sign, like a ring (a real 3D model, rendered with
+three.js). Its last frame is the frame right before `public/creed-loop.mp4` (an 8-second
+seamless turn) begins, so it hands off with no visible jump; `public/creed-loop.jpg` is the
+poster. Both play in `src/components/HeroLoop.tsx`, under the copy. With reduced motion
+turned on the intro is skipped and the finished mark holds still.
+
+**The smoke.** `src/components/SmokeField.tsx` drifts warm gold smoke and a few rising
+embers across the whole site (not the dashboard). It only ever lightens, so black stays
+black and text stays readable. Strength: the `opacity-50` class at the bottom of that
+file, and `PUFFS` / `EMBERS` at the top.
+
+To change the videos, edit `tools/hero-loop.html`, then:
+```bash
+pip install playwright && playwright install chromium   # once; also needs ffmpeg
+python3 tools/render-loop.py
 ```
-app/page.tsx              Public one-pager
-app/login, app/auth       Sign up / log in / reset password
-app/plan                  Rep area (My Plan)
-app/dashboard/*           Owner dashboard (all owner-only)
-app/dashboard/actions.ts  Owner server actions (each re-checks the role)
-components/PayCalculator  Growth Plan + Owner Plan calculator (same math as the originals)
-lib/content.ts            Public-site copy: edit words here
-supabase/schema.sql       Tables + security rules
-supabase/seed.sql         Markets, pay rules, sample data
-```
+
+## Owner dashboard — `/#/dashboard`
+
+Owners only. Open it from the account menu ("Owner dashboard") once you're logged in.
+
+| Tab | What it does |
+| --- | --- |
+| **Overview** | Sales, installs, connect rate, active reps, applications and signings, each with ▲▼ vs. the previous period; sales by week (fiber vs. pest); recruiting counts by stage; overdue follow-ups; projected override; top-10 leaderboard. Filter by industry, market and Today / Week / Month / Season. |
+| **Pipeline** | Every application from the site lands here as a *New lead*. Kanban (drag cards, or use the dropdown on each card) or table view; filter to Braden's or Peter's. Click a card for Call / Text / Email / Instagram buttons, the "where they're at" notes thread (signed with who wrote it), all their answers, and follow-up dates — overdue ones turn red. Move someone to **Signed** and it offers to create their rep record. |
+| **Reps** | Sortable, searchable table with today / week / month / season, installs, connect %, 30-day sparkline. Click a rep for history, notes and **Log numbers**; **Import CSV** (`rep,date,sales,installs`) for bulk days. |
+| **Contract rates** | Full contract pay per market. Powers the calculator's Owner view and spreads. |
+| **Settings** | Everyone with a login and their role (make owner / make rep), the owner-email allowlist, and a button to clear the sample data. |
+
+Security: every table behind the dashboard is locked to owners in the database
+(row-level security), so even someone who finds `/#/dashboard` gets nothing back
+unless their account is an owner. This replaces the separate Next.js platform —
+one site, one login.
+
+## Apply
+
+Every application lands in the owner dashboard's **Pipeline** as a *New lead*, emails
+Braden and Peter, and sends the applicant to book an interview.
+
+**1. Database (once).** Supabase → SQL Editor → run `supabase/apply.sql`. It adds
+start date, car and license to the pipeline. (Fresh installs: `schema.sql` already has them.)
+
+**2. Booking page.** Make an interview event in Calendly (or Cal.com / Google booking
+pages) and put its link in `.env` as `VITE_BOOKING_URL`. Name and email pre-fill on
+Calendly and Cal.com. Leave it blank and applicants just see a thank-you message.
+
+**3. Email alerts (Resend — free up to 3,000 emails a month, 100 a day).**
+1. Sign up at [resend.com](https://resend.com) and create an API key.
+2. Resend → Domains → add the domain the site will live on (e.g. `creedmarketing.com`)
+   and add the DNS records it shows you at your domain registrar. Takes a few minutes.
+   *Without a verified domain, Resend only delivers to your own account email — so
+   Peter wouldn't get alerts until the domain is verified.*
+3. Deploy the function (needs the Supabase CLI, `npm i -g supabase`):
+   ```bash
+   supabase login
+   supabase link --project-ref YOUR-PROJECT-REF
+   supabase secrets set RESEND_API_KEY=re_... \
+     ALERT_FROM="Creed Applications <apply@creedmarketing.com>" \
+     ALERT_TO=you@gmail.com,peter@gmail.com \
+     WEBHOOK_SECRET=make-up-a-long-random-string \
+     DASHBOARD_URL=https://YOUR-PLATFORM/dashboard/pipeline
+   supabase functions deploy new-applicant-email --no-verify-jwt
+   ```
+4. Supabase → Database → Webhooks → **Create a new hook**:
+   table `recruits`, event **Insert**, type **Supabase Edge Functions**,
+   function `new-applicant-email`, method POST, and add an HTTP header
+   `x-webhook-secret` = the same `WEBHOOK_SECRET`.
+5. Submit a test application. You'll both get a black-and-gold email with every
+   answer, a **Call** button and an **Open pipeline** button. Hitting Reply answers
+   the applicant directly. Check spam the first time and mark it "Not spam".
+
+Spam protection: a hidden honeypot field, and the database only lets the public
+*add* a new lead — no one but owners can read, edit or delete applications.
+
+## Still to do
+- Calculator inputs are saved per browser, not per account.
+- The Contact form doesn't send anywhere yet.

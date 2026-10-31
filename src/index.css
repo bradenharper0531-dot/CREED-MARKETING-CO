@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Creed Marketing — design system
+   Black and gold, quiet and confident. Gold is the only brand colour;
+   a screen with gold everywhere has no gold.
+
+   Display: Oswald — condensed grotesque, always uppercase. Because the
+            face is narrow and set in caps, the scale tracks OUT (positive
+            letter-spacing) instead of in, and the leading closes below 1
+            so stacked lines read as one block.
+   Text:    Manrope — everything you read.
+   Numbers: JetBrains Mono — every dollar figure, count, percentage and
+            section tag, with tabular numerals so columns line up.
+   ------------------------------------------------------------------ */
+@theme {
+  --font-display: "Oswald", "Arial Narrow", sans-serif;
+  --font-sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* Surfaces — borders, not shadows, separate them */
+  --color-bg: #0b0b0a;
+  --color-surface: #151412;
+  --color-surface-raised: #1d1b17;
+  --color-well: #000000;
+  --color-line: #2e2a22;
+  --color-rule: rgba(245, 197, 24, 0.18);
+
+  /* Ink — warm off-white, never pure white */
+  --color-ink: #f2ede1;
+  --color-ink-muted: #9a927f;
+
+  /* Gold — the brand */
+  --color-gold: #f5c518;
+  --color-gold-glow: #ffd84d;
+  --color-gold-deep: #b8901a;
+  --color-gold-soft: #2b2410;
+  --color-gold-dim: #b39a4a;
+  --color-on-gold: #0b0b0a;
+
+  /* Industries — differ by lightness, not hue alone */
+  --color-bronze: #c08a52;
+
+  /* Display scale — drawn for Oswald 600, uppercase */
+  --text-display-xs: 2.5rem;
+  --text-display-xs--line-height: 1;
+  --text-display-xs--letter-spacing: 0.03em;
+
+  --text-display-sm: 3.25rem;
+  --text-display-sm--line-height: 0.97;
+  --text-display-sm--letter-spacing: 0.028em;
+
+  --text-display-md: 4.25rem;
+  --text-display-md--line-height: 0.95;
+  --text-display-md--letter-spacing: 0.025em;
+
+  --text-display-lg: 5.5rem;
+  --text-display-lg--line-height: 0.93;
+  --text-display-lg--letter-spacing: 0.022em;
+
+  --text-display-xl: 6.75rem;
+  --text-display-xl--line-height: 0.92;
+  --text-display-xl--letter-spacing: 0.02em;
+
+  /* Supporting text — opens up instead of tightening */
+  --text-lede: 1.0625rem;
+  --text-lede--line-height: 1.62;
+  --text-lede--letter-spacing: -0.004em;
+
+  --text-lede-lg: 1.1875rem;
+  --text-lede-lg--line-height: 1.58;
+  --text-lede-lg--letter-spacing: -0.008em;
+
+  /* Navigation — small, a touch of tracking */
+  --text-nav: 0.8125rem;
+  --text-nav--line-height: 1;
+  --text-nav--letter-spacing: 0.01em;
+
+  /* Mono section tags — the widest tracking in the system */
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: 0.14em;
+
+  /* Stat numbers — mono, the figure the eye lands on */
+  --text-stat: 2.5rem;
+  --text-stat--line-height: 1.1;
+  --text-stat--letter-spacing: -0.01em;
+
+  /* The one looping motion on the page */
+  --animate-marquee: marquee 48s linear infinite;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #0b0b0a;
+    color: #f2ede1;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  input, button, select, textarea {
+    font-family: inherit;
+  }
+
+  /* Anchored sections clear the fixed navbar */
+  section[id] {
+    scroll-margin-top: 5.5rem;
+  }
+}
+
+@layer components {
+  /* Scroll reveal — rises 16px and fades in once, as it enters */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Mouse spotlight — a soft gold light that follows the cursor inside a card.
+     --mx / --my are written by trackSpotlight() in src/lib/spotlight.ts */
+  .spotlight {
+    position: relative;
+    isolation: isolate;
+  }
+  .spotlight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgba(245, 197, 24, 0.1), transparent 60%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+  .spotlight:hover::before {
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .animate-marquee {
+    animation: none;
+  }
+}

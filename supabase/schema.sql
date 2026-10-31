@@ -170,6 +170,10 @@ create table recruits (
     check (stage in ('new', 'contacted', 'interviewing', 'offer', 'signed', 'cold', 'not_fit')),
   owner_name text check (owner_name in ('Braden', 'Peter')),
   next_follow_up date,
+  start_date date,
+  has_car boolean,
+  has_license boolean,
+  notified_at timestamptz,
   last_touch timestamptz default now(),
   signed_at timestamptz,
   is_sample boolean default false,
@@ -248,7 +252,7 @@ create policy "owners manage rep notes" on rep_notes for all using (is_owner()) 
 -- recruits: owners everything; anyone may submit the public application (new leads only)
 create policy "owners manage recruits" on recruits for all using (is_owner()) with check (is_owner());
 create policy "public can apply" on recruits for insert to anon, authenticated
-  with check (stage = 'new' and is_sample = false and owner_name is null);
+  with check (stage = 'new' and is_sample = false and owner_name is null and notified_at is null);
 
 create policy "owners manage recruit notes" on recruit_notes for all using (is_owner()) with check (is_owner());
 
