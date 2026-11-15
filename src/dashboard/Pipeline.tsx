@@ -5,6 +5,7 @@ import { PageHead } from './Dashboard.tsx';
 import { STAGES, stageTone, PILLAR_LABEL, type Note, type Recruit, type Stage, type OwnerName } from './types.ts';
 import { dateTime, shortDate, ymd } from './dates.ts';
 import { useActor } from './useOwner.ts';
+import { useAuth } from '../lib/auth.tsx';
 import { btn, btnDanger, btnGold, ChipButton, Empty, ErrorNote, Field, IndTag, input, Loading, Panel, Pill, SampleTag, Thread, TONE } from './ui.tsx';
 
 const CLOSED: Stage[] = ['signed', 'cold', 'not_fit'];
@@ -241,6 +242,8 @@ function RecruitPanel({ recruit: r, notes, markets, actor, onNote, onMove, onSav
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [converted, setConverted] = useState(false);
+  // team leads work the pipeline; deleting leads and creating rep records stay with owners
+  const isOwner = useAuth().profile?.role === 'owner';
 
   async function addNote(e: React.FormEvent) {
     e.preventDefault();
@@ -332,7 +335,10 @@ function RecruitPanel({ recruit: r, notes, markets, actor, onNote, onMove, onSav
         </div>
       )}
 
-      {r?.stage === 'signed' && !converted && (
+      {r?.stage === 'signed' && !converted && !isOwner && (
+        <p className="rounded-md border px-3 py-2 text-sm" style={{ borderColor: TONE.signed, color: TONE.signed }}>Signed. Braden or Peter will set {r.name.split(' ')[0]} up as a rep.</p>
+      )}
+      {r?.stage === 'signed' && !converted && isOwner && (
         <div className="space-y-2 rounded-[10px] border bg-well p-4" style={{ borderColor: TONE.signed }}>
           <p className="font-semibold" style={{ color: TONE.signed }}>Signed. Create a rep record for {r.name.split(' ')[0]}?</p>
           <p className="text-[13px] text-ink-muted">Copies name, phone, email, market, start date and who recruited them into Reps.</p>
@@ -408,7 +414,7 @@ function RecruitPanel({ recruit: r, notes, markets, actor, onNote, onMove, onSav
         <div className="flex items-center gap-3">
           <button className={btnGold} disabled={busy}>{busy ? 'Saving…' : r ? 'Save details' : 'Add recruit'}</button>
           {msg && <span className="text-sm" style={{ color: TONE.signed }}>{msg}</span>}
-          {r && <button type="button" onClick={remove} className={btnDanger}>Delete</button>}
+          {r && isOwner && <button type="button" onClick={remove} className={btnDanger}>Delete</button>}
         </div>
       </form>
       {r && <p className="font-mono text-xs text-ink-muted">Applied {dateTime(r.created_at)}{r.source ? ` · via ${r.source}` : ''}</p>}

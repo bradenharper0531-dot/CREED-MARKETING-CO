@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowLeft, LayoutDashboard, KanbanSquare, Users, BadgeDollarSign, Settings as Gear, Lock, LogOut } from 'lucide-react';
 import { Logo } from '../components/Logo.tsx';
-import { useAuth, initials } from '../lib/auth.tsx';
+import { useAuth, initials, ROLE_LABEL } from '../lib/auth.tsx';
 import { isConfigured } from '../lib/supabase.ts';
 import { DASH } from '../lib/route.ts';
 import { Overview } from './Overview.tsx';
@@ -19,12 +19,12 @@ const TABS = [
   { id: 'settings', label: 'Settings', icon: Gear },
 ] as const;
 
-/* The owner dashboard. Everything here reads and writes owner-only tables;
-   the database refuses those rows to anyone who isn't an owner, so this gate
-   is for a clean experience — the real lock is row-level security. */
+/* The owner dashboard. Owners get every tab; team leads get the recruiting
+   pipeline only. The database refuses owner-only rows to everyone else, so
+   these gates are for a clean experience — the real lock is row-level security. */
 export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => void }) {
   const { profile, loading, signOut } = useAuth();
-  const tab = hash.replace(DASH, '').replace(/^\//, '').split(/[/?]/)[0];
+  const raw = hash.replace(DASH, '').replace(/^\//, '').split(/[/?]/)[0];
 
   const gate = (title: string, body: React.ReactNode, action?: React.ReactNode) => (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-ink">
@@ -46,8 +46,12 @@ export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => vo
 
   if (!isConfigured) return gate('Owner dashboard', <>Logins aren&apos;t connected yet. Add the Supabase keys to <span className="font-mono">.env</span> (see README).</>);
   if (loading) return <div className="min-h-screen bg-bg"><Loading /></div>;
-  if (!profile) return gate('Owners only', 'Log in with an owner account to open the dashboard.', <button className={btnGold} onClick={onSignIn}>Log in</button>);
-  if (profile.role !== 'owner') return gate('Owners only', `You're logged in as ${profile.email}, which is a rep account. The dashboard is for Creed's owners.`);
+  if (!profile) return gate('Owners & team leads', 'Log in with an owner or team lead account to open the dashboard.', <button className={btnGold} onClick={onSignIn}>Log in</button>);
+  if (profile.role === 'rep') return gate('Owners & team leads', `You're logged in as ${profile.email}, which is a rep account. The dashboard is for Creed's owners and team leads.`);
+
+  const isOwner = profile.role === 'owner';
+  const tabs = isOwner ? TABS : TABS.filter((t) => t.id === 'pipeline');
+  const tab = isOwner ? raw : 'pipeline'; // team leads always land on the pipeline
 
   return (
     <div className="min-h-screen bg-bg text-ink">
@@ -56,7 +60,7 @@ export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => vo
           <a href="#" className="group flex items-center" aria-label="Creed — back to the site">
             <Logo />
           </a>
-          <span className="hidden rounded-[4px] bg-gold px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-on-gold sm:inline">Owner</span>
+          <span className="hidden rounded-[4px] bg-gold px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-on-gold sm:inline">{ROLE_LABEL[profile.role]}</span>
           <div className="ml-auto flex items-center gap-2">
             <a href="#" className="hidden items-center gap-1.5 text-sm text-ink-muted hover:text-gold sm:inline-flex">
               <ArrowLeft className="h-4 w-4" /> Site
@@ -70,7 +74,7 @@ export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => vo
           </div>
         </div>
         <nav aria-label="Dashboard" className="mx-auto flex max-w-[1400px] gap-1 overflow-x-auto px-4 sm:px-8">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = tab === t.id;
             const Icon = t.icon;
             return (

@@ -2,7 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase.ts';
 
-export type Role = 'owner' | 'rep';
+export type Role = 'owner' | 'lead' | 'rep';
+export const ROLE_LABEL: Record<Role, string> = { owner: 'Owner', lead: 'Team lead', rep: 'Rep' };
 export interface Profile {
   id: string;
   email: string;
@@ -29,8 +30,8 @@ const AuthContext = createContext<AuthState>({
   signOut: async () => {},
 });
 
-/* Role always comes from the `profiles` table (set by the owner-email allowlist
-   in the database), never from anything typed at sign-up. */
+/* Role always comes from the `profiles` table (set by the owner and team-lead
+   email lists in the database), never from anything typed at sign-up. */
 async function loadProfile(session: Session): Promise<Profile> {
   const fallback: Profile = {
     id: session.user.id,
@@ -41,7 +42,7 @@ async function loadProfile(session: Session): Promise<Profile> {
   if (!supabase) return fallback;
   const { data } = await supabase.from('profiles').select('email, full_name, role').eq('id', session.user.id).maybeSingle();
   if (!data) return fallback;
-  return { id: session.user.id, email: data.email, fullName: data.full_name || fallback.fullName, role: data.role === 'owner' ? 'owner' : 'rep' };
+  return { id: session.user.id, email: data.email, fullName: data.full_name || fallback.fullName, role: data.role === 'owner' || data.role === 'lead' ? data.role : 'rep' };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -30,6 +30,7 @@ Use **one** Supabase project for this site and the platform.
 | --- | --- |
 | Logged out | Whole site; calculator in rep pay |
 | Rep (anyone who signs up) | Same, plus their account menu |
+| Team lead (emails in `lead_emails`) | Same as a rep, plus **Recruiting pipeline** in their account menu: every lead, notes, stages and follow-ups. Can add leads and update them; can't delete leads or create rep records, and never sees rates, margins or rep numbers. |
 | Owner (emails in `owner_emails`) | Calculator gets **Owner view**: full contract pay, rep pay, spread per account / per rep / across the team. "Rep view" previews what reps see. |
 
 Owner status comes only from the `owner_emails` list in the database, never from a
@@ -73,6 +74,18 @@ Security: every table behind the dashboard is locked to owners in the database
 (row-level security), so even someone who finds `/#/dashboard` gets nothing back
 unless their account is an owner. This replaces the separate Next.js platform —
 one site, one login.
+
+## Team leads
+
+**1. Database (once).** Supabase → SQL Editor → run `supabase/team-leads.sql`. Safe to re-run.
+
+**2. Make someone a team lead.** Owner dashboard → **Settings** → **Team leads** → type their
+email → **Add**. If they already have an account it switches right away; if not, they become a
+team lead when they sign up with that email. Remove the email and they go back to a rep.
+You can also switch anyone's role from the dropdown in the **Everyone with a login** table.
+
+Team leads open the pipeline from their account menu (**Recruiting pipeline**). The database
+enforces all of this, so a team lead can't reach rates, reps or settings even by typing the URL.
 
 ## Apply
 

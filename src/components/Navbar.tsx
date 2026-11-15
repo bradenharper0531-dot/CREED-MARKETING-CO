@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Logo } from './Logo.tsx';
 import { Menu, X, LogOut, LayoutDashboard, Calculator } from 'lucide-react';
-import { useAuth, initials } from '../lib/auth.tsx';
+import { useAuth, initials, ROLE_LABEL } from '../lib/auth.tsx';
 import { DASH } from '../lib/route.ts';
 
 /* Signed-in account button + dropdown (desktop) */
@@ -43,7 +43,7 @@ function AccountMenu() {
             <p className="truncate text-sm font-semibold text-ink">{profile.fullName}</p>
             <p className="truncate text-xs text-ink-muted">{profile.email}</p>
             <span className={`mt-2 inline-block rounded-[4px] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ${profile.role === 'owner' ? 'bg-gold text-on-gold' : 'bg-gold-soft text-gold'}`}>
-              {profile.role === 'owner' ? 'Owner' : 'Rep'}
+              {ROLE_LABEL[profile.role]}
             </span>
           </div>
           <div className="pt-1.5">
@@ -53,6 +53,11 @@ function AccountMenu() {
             {profile.role === 'owner' && (
               <a href={DASH} onClick={() => setOpen(false)} className={item}>
                 <LayoutDashboard className="h-4 w-4 text-gold" /> Owner dashboard
+              </a>
+            )}
+            {profile.role === 'lead' && (
+              <a href={`${DASH}/pipeline`} onClick={() => setOpen(false)} className={item}>
+                <LayoutDashboard className="h-4 w-4 text-gold" /> Recruiting pipeline
               </a>
             )}
             <button onClick={() => { setOpen(false); signOut(); }} className={item}>
@@ -193,10 +198,13 @@ export function Navbar({ onApplyClick, onContactClick, onSignInClick }: NavbarPr
                 <>
                   <p className="pt-1 text-[13px] text-ink-muted">
                     Logged in as <span className="text-ink">{profile.fullName || profile.email}</span>{' '}
-                    <span className="font-mono text-[11px] uppercase text-gold">· {profile.role}</span>
+                    <span className="font-mono text-[11px] uppercase text-gold">· {ROLE_LABEL[profile.role]}</span>
                   </p>
                   {profile.role === 'owner' && (
                     <a href={DASH} onClick={() => setMobileMenuOpen(false)} className="text-left text-ink-muted hover:text-gold py-1 text-[15px]">Owner dashboard</a>
+                  )}
+                  {profile.role === 'lead' && (
+                    <a href={`${DASH}/pipeline`} onClick={() => setMobileMenuOpen(false)} className="text-left text-ink-muted hover:text-gold py-1 text-[15px]">Recruiting pipeline</a>
                   )}
                   <button
                     onClick={() => {
