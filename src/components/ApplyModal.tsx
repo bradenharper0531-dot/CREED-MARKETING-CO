@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2, ArrowRight, CalendarCheck } from 'lucide-react';
 import { ModalShell } from './ModalShell.tsx';
-import { MARKET_CARDS } from '../data/markets.ts';
 import { labelClass, fieldClass } from '../lib/ui.ts';
 import { supabase } from '../lib/supabase.ts';
 
@@ -26,22 +25,17 @@ function bookingLink(name: string, email: string) {
   }
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 const EMPTY = {
-  name: '',
+  firstName: '',
+  lastName: '',
   phone: '',
   email: '',
-  instagram: '',
-  industry: 'Either',
-  market: 'Not sure yet',
-  pillar: 'Physical',
-  startDate: '',
-  car: '',
-  license: '',
-  heardFrom: '',
+  industry: '',
+  experience: '',
   company: '', // honeypot — real people never see or fill this
 };
+
+const EXPERIENCE_MAX = 600;
 
 export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
   const [submitted, setSubmitted] = useState(false);
@@ -49,7 +43,7 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
   const [error, setError] = useState('');
   const [formData, setFormData] = useState(EMPTY);
 
-  const update = (key: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const update = (key: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setFormData({ ...formData, [key]: e.target.value });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,20 +58,16 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
       return;
     }
     setSending(true);
-    /* Lands in the owners' recruiting pipeline as a "New lead". The database only
-       lets the public INSERT a new lead — nobody can read applications back but owners. */
+    /* Lands in the recruiting pipeline as a "New lead" and emails Braden and Peter
+       (supabase/functions/new-applicant-email). The database only lets the public
+       INSERT a new lead — nobody can read applications back but owners and team leads. */
     const { error } = await supabase.from('recruits').insert({
-      name: formData.name.trim().slice(0, 120),
+      name: `${formData.firstName.trim()} ${formData.lastName.trim()}`.slice(0, 120),
       phone: formData.phone.trim().slice(0, 40),
       email: formData.email.trim().toLowerCase().slice(0, 160),
-      instagram: formData.instagram.trim().slice(0, 60) || null,
-      industry_interest: formData.industry === 'Fiber' ? 'fiber' : formData.industry === 'Pest control' ? 'pest' : 'either',
-      preferred_market: formData.market === 'Not sure yet' ? null : formData.market,
-      pillar: formData.pillar.toLowerCase(),
-      start_date: formData.startDate || null,
-      has_car: formData.car === 'yes',
-      has_license: formData.license === 'yes',
-      source: formData.heardFrom.trim().slice(0, 120) || null,
+      industry_interest: formData.industry === 'pest' ? 'pest' : 'fiber',
+      experience: formData.experience.trim().slice(0, EXPERIENCE_MAX),
+      source: 'Website application',
       stage: 'new',
     });
     setSending(false);
@@ -95,8 +85,8 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
     onClose();
   };
 
-  const firstName = formData.name.trim().split(' ')[0] || 'friend';
-  const book = bookingLink(formData.name.trim(), formData.email.trim());
+  const firstName = formData.firstName.trim() || 'friend';
+  const book = bookingLink(`${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(), formData.email.trim());
 
   return (
     <ModalShell isOpen={isOpen} onClose={handleClose} labelledBy="apply-title" maxWidth="max-w-lg">
@@ -107,14 +97,18 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
           </div>
           <h2 id="apply-title" className="font-display text-3xl font-semibold tracking-[0.04em] text-ink">Apply to Creed</h2>
           <p className="text-sm text-ink-muted mt-2 mb-6">
-            Two minutes. Send it, then book your interview on the next screen.
+            One minute. Braden and Peter read every one.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="apply-name" className={labelClass}>Name</label>
-                <input id="apply-name" type="text" required autoComplete="name" placeholder="Your name" value={formData.name} onChange={update('name')} className={fieldClass} />
+                <label htmlFor="apply-first" className={labelClass}>First name</label>
+                <input id="apply-first" type="text" required autoComplete="given-name" value={formData.firstName} onChange={update('firstName')} className={fieldClass} />
+              </div>
+              <div>
+                <label htmlFor="apply-last" className={labelClass}>Last name</label>
+                <input id="apply-last" type="text" required autoComplete="family-name" value={formData.lastName} onChange={update('lastName')} className={fieldClass} />
               </div>
               <div>
                 <label htmlFor="apply-phone" className={labelClass}>Phone</label>
@@ -124,64 +118,40 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
                 <label htmlFor="apply-email" className={labelClass}>Email</label>
                 <input id="apply-email" type="email" required autoComplete="email" placeholder="you@email.com" value={formData.email} onChange={update('email')} className={fieldClass} />
               </div>
-              <div>
-                <label htmlFor="apply-ig" className={labelClass}>Instagram</label>
-                <input id="apply-ig" type="text" placeholder="@handle" value={formData.instagram} onChange={update('instagram')} className={fieldClass} />
-              </div>
-              <div>
-                <label htmlFor="apply-industry" className={labelClass}>Industry interest</label>
-                <select id="apply-industry" value={formData.industry} onChange={update('industry')} className={fieldClass}>
-                  <option value="Fiber">Fiber</option>
-                  <option value="Pest control">Pest control</option>
-                  <option value="Either">Either</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="apply-market" className={labelClass}>Preferred market</label>
-                <select id="apply-market" value={formData.market} onChange={update('market')} className={fieldClass}>
-                  <option value="Not sure yet">Not sure yet</option>
-                  {MARKET_CARDS.map((m) => (
-                    <option key={m.name} value={m.name}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="apply-start" className={labelClass}>Available to start</label>
-                <input id="apply-start" type="date" required min={today()} value={formData.startDate} onChange={update('startDate')} className={`${fieldClass} font-mono`} />
-              </div>
+            </div>
+
+            <fieldset>
+              <legend className={labelClass}>Which are you applying for?</legend>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="apply-car" className={labelClass}>Have a car?</label>
-                  <select id="apply-car" required value={formData.car} onChange={update('car')} className={fieldClass}>
-                    <option value="" disabled>Select</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="apply-license" className={labelClass}>License?</label>
-                  <select id="apply-license" required value={formData.license} onChange={update('license')} className={fieldClass}>
-                    <option value="" disabled>Select</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </div>
+                {([['fiber', 'Fiber'], ['pest', 'Pest control']] as const).map(([v, label]) => (
+                  <label
+                    key={v}
+                    className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2.5 text-sm font-semibold transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-gold ${
+                      formData.industry === v ? 'border-gold bg-gold-soft text-gold' : 'border-line text-ink-muted hover:border-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    <input type="radio" name="industry" value={v} required checked={formData.industry === v} onChange={update('industry')} className="sr-only" />
+                    {label}
+                  </label>
+                ))}
               </div>
-            </div>
+            </fieldset>
 
             <div>
-              <label htmlFor="apply-pillar" className={labelClass}>Which pillar do you most want to grow?</label>
-              <select id="apply-pillar" value={formData.pillar} onChange={update('pillar')} className={fieldClass}>
-                <option value="Physical">Physical</option>
-                <option value="Spiritual">Spiritual</option>
-                <option value="Mental">Mental</option>
-                <option value="Financial">Financial</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="apply-heard" className={labelClass}>How did you hear about us?</label>
-              <input id="apply-heard" type="text" placeholder="A friend, Instagram, a rep at your door…" value={formData.heardFrom} onChange={update('heardFrom')} className={fieldClass} />
+              <div className="flex items-baseline justify-between">
+                <label htmlFor="apply-experience" className={labelClass}>Previous work experience</label>
+                <span className="font-mono text-[11px] text-ink-muted">{formData.experience.length}/{EXPERIENCE_MAX}</span>
+              </div>
+              <textarea
+                id="apply-experience"
+                required
+                rows={3}
+                maxLength={EXPERIENCE_MAX}
+                placeholder="A few sentences: jobs you've had, sales or customer-facing work, sports, anything you're proud of."
+                value={formData.experience}
+                onChange={update('experience')}
+                className={`${fieldClass} resize-y`}
+              />
             </div>
 
             {/* honeypot */}
@@ -218,7 +188,7 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
           <p className="text-sm text-ink-muted max-w-sm mx-auto mb-6">
             {book
               ? <>You&apos;re in the pipeline, {firstName}. Last step — pick a time for your interview with Braden or Peter.</>
-              : <>Thank you, {firstName}. One of the owners will reach out at <span className="text-ink font-medium font-mono">{formData.phone}</span> soon. Start with the {formData.pillar.toLowerCase()} pillar today.</>}
+              : <>Thank you, {firstName}. Braden or Peter will reach out at <span className="text-ink font-medium font-mono">{formData.phone}</span> soon.</>}
           </p>
           {book ? (
             <div className="flex flex-col items-center gap-3">

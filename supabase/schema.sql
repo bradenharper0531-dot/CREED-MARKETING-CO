@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Creed Marketing — database schema
 -- Run this whole file once in Supabase: Dashboard → SQL Editor → New query.
--- Then run seed.sql, apply.sql and team-leads.sql. Safe to re-run: it drops and recreates Creed objects.
+-- Then run seed.sql, apply.sql, team-leads.sql and application-v2.sql. Safe to re-run: it drops and recreates Creed objects.
 -- =====================================================================
 
 -- ---------- 0. Clean slate (only Creed objects) ----------
@@ -168,6 +168,7 @@ create table recruits (
   preferred_market text,
   pillar text check (pillar in ('physical', 'spiritual', 'mental', 'financial')),
   source text,
+  experience text check (char_length(experience) <= 2000),
   stage text not null default 'new'
     check (stage in ('new', 'contacted', 'interviewing', 'offer', 'signed', 'cold', 'not_fit')),
   owner_name text check (owner_name in ('Braden', 'Peter')),

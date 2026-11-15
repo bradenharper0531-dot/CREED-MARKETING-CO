@@ -37,6 +37,7 @@ export interface Recruit {
   preferred_market: string | null;
   pillar: Pillar | null;
   source: string | null;
+  experience: string | null;
   stage: Stage;
   owner_name: OwnerName | null;
   next_follow_up: string | null;

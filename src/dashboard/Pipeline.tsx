@@ -282,6 +282,7 @@ function RecruitPanel({ recruit: r, notes, markets, actor, onNote, onMove, onSav
       has_car: yn('has_car'),
       has_license: yn('has_license'),
       source: s('source', 120),
+      experience: s('experience', 600),
     };
     setBusy(true);
     setErr('');
@@ -402,6 +403,7 @@ function RecruitPanel({ recruit: r, notes, markets, actor, onNote, onMove, onSav
           </Field>
           <Field label="Next follow-up"><input name="next_follow_up" type="date" defaultValue={r?.next_follow_up ?? ''} className={`${input} font-mono`} /></Field>
         </div>
+        <Field label="Previous work experience"><textarea name="experience" rows={4} maxLength={600} defaultValue={r?.experience ?? ''} className={`${input} resize-y`} /></Field>
         <Field label="How they heard about us"><input name="source" defaultValue={r?.source ?? ''} className={input} /></Field>
         {r && (
           <Field label="Stage">

@@ -27,6 +27,7 @@ type Recruit = {
   has_car: boolean | null;
   has_license: boolean | null;
   source: string | null;
+  experience: string | null;
   is_sample: boolean | null;
   notified_at: string | null;
 };
@@ -45,18 +46,19 @@ function longDate(d: string | null) {
 
 function rows(r: Recruit): [string, string][] {
   const interest = r.industry_interest === 'pest' ? 'Pest control' : r.industry_interest === 'fiber' ? 'Fiber' : 'Either';
-  return [
+  const out: [string, string][] = [
+    ['Applying for', interest],
     ['Phone', r.phone ?? '—'],
     ['Email', r.email ?? '—'],
-    ['Instagram', r.instagram ?? '—'],
-    ['Industry', interest],
-    ['Market', r.preferred_market ?? 'Not sure yet'],
-    ['Can start', longDate(r.start_date)],
-    ['Car', yn(r.has_car)],
-    ["Driver's license", yn(r.has_license)],
-    ['Pillar to grow', cap(r.pillar)],
-    ['Heard about us', r.source ?? '—'],
   ];
+  // older / hand-added leads may carry these; the current Apply form doesn't ask for them
+  if (r.instagram) out.push(['Instagram', r.instagram]);
+  if (r.preferred_market) out.push(['Market', r.preferred_market]);
+  if (r.start_date) out.push(['Can start', longDate(r.start_date)]);
+  if (r.has_car != null) out.push(['Car', yn(r.has_car)]);
+  if (r.has_license != null) out.push(["Driver's license", yn(r.has_license)]);
+  if (r.pillar) out.push(['Pillar to grow', cap(r.pillar)]);
+  return out;
 }
 
 function html(r: Recruit) {
@@ -76,6 +78,7 @@ function html(r: Recruit) {
         <p style="margin:0 0 6px;color:#9a927f;font-size:14px">Just applied on the site. They're in the pipeline as a New lead.</p>
       </td></tr>
       <tr><td style="padding:6px 26px 4px"><table width="100%" cellpadding="0" cellspacing="0">${tr}</table></td></tr>
+      ${r.experience ? `<tr><td style="padding:10px 26px 0"><div style="color:#9a927f;font-size:13px;margin-bottom:6px">Previous work experience</div><div style="padding:12px 14px;border:1px solid #2e2a22;border-radius:6px;background:#0b0b0a;color:#f2ede1;font-size:14px;line-height:1.5;white-space:pre-wrap">${esc(r.experience)}</div></td></tr>` : ''}
       <tr><td style="padding:18px 26px 22px">${tel}${open}</td></tr>
     </table>
     <p style="color:#5e584b;font-size:12px;margin:14px 0 0">Reply to this email to answer ${esc(r.name.split(' ')[0])} directly.</p>
@@ -83,7 +86,7 @@ function html(r: Recruit) {
 }
 
 function text(r: Recruit) {
-  return [`New Creed applicant: ${r.name}`, '', ...rows(r).map(([k, v]) => `${k}: ${v}`), '', env('DASHBOARD_URL') ? `Pipeline: ${env('DASHBOARD_URL')}` : ''].join('\n');
+  return [`New Creed applicant: ${r.name}`, '', ...rows(r).map(([k, v]) => `${k}: ${v}`), ...(r.experience ? ['', 'Previous work experience:', r.experience] : []), '', env('DASHBOARD_URL') ? `Pipeline: ${env('DASHBOARD_URL')}` : ''].join('\n');
 }
 
 Deno.serve(async (req) => {
@@ -98,7 +101,7 @@ Deno.serve(async (req) => {
   if (r.is_sample || r.notified_at) return new Response('Skipped', { status: 200 });
 
   const to = env('ALERT_TO').split(',').map((s) => s.trim()).filter(Boolean);
-  const market = r.preferred_market ? ` · ${r.preferred_market}` : '';
+  const market = r.industry_interest === 'pest' ? ' · Pest control' : r.industry_interest === 'fiber' ? ' · Fiber' : '';
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
