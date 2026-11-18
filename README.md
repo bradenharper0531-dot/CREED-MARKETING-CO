@@ -99,30 +99,17 @@ start date, car and license to the pipeline. (Fresh installs: `schema.sql` alrea
 pages) and put its link in `.env` as `VITE_BOOKING_URL`. Name and email pre-fill on
 Calendly and Cal.com. Leave it blank and applicants just see a thank-you message.
 
-**3. Email alerts (Resend — free up to 3,000 emails a month, 100 a day).**
-1. Sign up at [resend.com](https://resend.com) and create an API key.
-2. Resend → Domains → add the domain the site will live on (e.g. `creedmarketing.com`)
-   and add the DNS records it shows you at your domain registrar. Takes a few minutes.
-   *Without a verified domain, Resend only delivers to your own account email — so
-   Peter wouldn't get alerts until the domain is verified.*
-3. Deploy the function (needs the Supabase CLI, `npm i -g supabase`):
-   ```bash
-   supabase login
-   supabase link --project-ref YOUR-PROJECT-REF
-   supabase secrets set RESEND_API_KEY=re_... \
-     ALERT_FROM="Creed Applications <apply@creedmarketing.com>" \
-     ALERT_TO=you@gmail.com,peter@gmail.com \
-     WEBHOOK_SECRET=make-up-a-long-random-string \
-     DASHBOARD_URL=https://YOUR-PLATFORM/dashboard/pipeline
-   supabase functions deploy new-applicant-email --no-verify-jwt
-   ```
-4. Supabase → Database → Webhooks → **Create a new hook**:
-   table `recruits`, event **Insert**, type **Supabase Edge Functions**,
-   function `new-applicant-email`, method POST, and add an HTTP header
-   `x-webhook-secret` = the same `WEBHOOK_SECRET`.
-5. Submit a test application. You'll both get a black-and-gold email with every
-   answer, a **Call** button and an **Open pipeline** button. Hitting Reply answers
-   the applicant directly. Check spam the first time and mark it "Not spam".
+**3. Email alerts (Resend — free up to 3,000 emails a month, 100 a day).** Set up Nov 2026.
+- Resend: `creedmarketing.org` is verified, so alerts can go to anyone.
+- Supabase → Edge Functions: `new-applicant-email` (code in `supabase/functions/`),
+  with **Verify JWT off**. Secrets: `RESEND_API_KEY`, `ALERT_FROM`
+  (`Creed Applications <apply@creedmarketing.org>`), `ALERT_TO` (comma-separated emails),
+  `DASHBOARD_URL`.
+- Supabase → Database → Webhooks: `new-applicant-email` on `recruits` **Insert** →
+  Supabase Edge Function `new-applicant-email`.
+- The function only trusts the database: it emails a real application once, within
+  15 minutes of it arriving, and stamps `notified_at`. Change who gets alerts by editing
+  the `ALERT_TO` secret. Check spam the first time and mark it "Not spam".
 
 Spam protection: a hidden honeypot field, and the database only lets the public
 *add* a new lead — no one but owners can read, edit or delete applications.

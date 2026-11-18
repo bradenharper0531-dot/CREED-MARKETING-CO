@@ -1,17 +1,21 @@
 // Supabase Edge Function — emails the owners when someone applies.
 //
 // Fired by a Database Webhook on INSERT into `recruits` (see README). Sends one
-// email to everyone in ALERT_TO through Resend (free: 3,000/month, 100/day),
-// then stamps `notified_at` on the recruit so a lead is never emailed twice.
+// email to everyone in ALERT_TO through Resend (free: 3,000/month, 100/day).
 // Hitting "Reply" in the email replies straight to the applicant.
 //
-// Secrets (supabase secrets set …):
-//   RESEND_API_KEY   from resend.com → API Keys
-//   ALERT_FROM       e.g. "Creed Applications <apply@yourdomain.com>"
-//                    (must be on a domain you verified in Resend; see README)
+// It never trusts what it's sent: it takes only the new row's id, reads the real
+// row from the database, and "claims" it by stamping `notified_at` only if it's
+// still empty and the application is under 15 minutes old. So each application
+// is emailed at most once, and calling this URL by hand can't send anything new
+// (the public can already add applications through the form anyway).
+//
+// Secrets (Supabase → Edge Functions → Secrets):
+//   RESEND_API_KEY   from resend.com → API Keys (sending access)
+//   ALERT_FROM       e.g. "Creed Applications <apply@creedmarketing.org>"
+//                    (must be on a domain verified in Resend)
 //   ALERT_TO         comma-separated, e.g. braden@gmail.com,peter@gmail.com
-//   WEBHOOK_SECRET   any long random string; the webhook sends it as x-webhook-secret
-//   DASHBOARD_URL    optional — link to the pipeline, e.g. https://app.yourdomain.com/dashboard/pipeline
+//   DASHBOARD_URL    optional — link to the pipeline, e.g. https://creedmarketing.org/#/dashboard/pipeline
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 
 type Recruit = {
@@ -89,19 +93,44 @@ function text(r: Recruit) {
   return [`New Creed applicant: ${r.name}`, '', ...rows(r).map(([k, v]) => `${k}: ${v}`), ...(r.experience ? ['', 'Previous work experience:', r.experience] : []), '', env('DASHBOARD_URL') ? `Pipeline: ${env('DASHBOARD_URL')}` : ''].join('\n');
 }
 
+const db = (path: string, init: RequestInit = {}) =>
+  fetch(`${env('SUPABASE_URL')}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: env('SUPABASE_SERVICE_ROLE_KEY'),
+      Authorization: `Bearer ${env('SUPABASE_SERVICE_ROLE_KEY')}`,
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-  if (!env('WEBHOOK_SECRET') || req.headers.get('x-webhook-secret') !== env('WEBHOOK_SECRET')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
 
   const payload = await req.json().catch(() => null);
-  const r: Recruit | undefined = payload?.record;
-  if (payload?.type !== 'INSERT' || payload?.table !== 'recruits' || !r) return new Response('Ignored', { status: 200 });
-  if (r.is_sample || r.notified_at) return new Response('Skipped', { status: 200 });
+  const id: unknown = payload?.record?.id;
+  if (payload?.type !== 'INSERT' || payload?.table !== 'recruits' || typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) {
+    return json({ ignored: true });
+  }
+
+  // Claim the real row: only a fresh, real, not-yet-emailed application qualifies.
+  const fresh = new Date(Date.now() - 15 * 60_000).toISOString();
+  const claim = await db(
+    `recruits?id=eq.${id}&notified_at=is.null&is_sample=eq.false&created_at=gte.${encodeURIComponent(fresh)}&select=*`,
+    { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ notified_at: new Date().toISOString() }) },
+  );
+  if (!claim.ok) {
+    console.error(`claim ${claim.status}: ${await claim.text()}`);
+    return json({ error: 'claim failed' }, 500);
+  }
+  const [r] = (await claim.json()) as Recruit[];
+  if (!r) return json({ skipped: true });
 
   const to = env('ALERT_TO').split(',').map((s) => s.trim()).filter(Boolean);
-  const market = r.industry_interest === 'pest' ? ' · Pest control' : r.industry_interest === 'fiber' ? ' · Fiber' : '';
+  const industry = r.industry_interest === 'pest' ? ' · Pest control' : r.industry_interest === 'fiber' ? ' · Fiber' : '';
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
@@ -109,7 +138,7 @@ Deno.serve(async (req) => {
       from: env('ALERT_FROM'),
       to,
       reply_to: r.email ?? undefined,
-      subject: `New applicant: ${r.name}${market}`,
+      subject: `New applicant: ${r.name}${industry}`,
       html: html(r),
       text: text(r),
     }),
@@ -117,19 +146,9 @@ Deno.serve(async (req) => {
   if (!res.ok) {
     const detail = await res.text();
     console.error(`Resend ${res.status}: ${detail}`);
-    return new Response(detail, { status: 502 });
+    // release the claim so a retry can send it
+    await db(`recruits?id=eq.${id}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ notified_at: null }) });
+    return json({ error: 'email failed', detail }, 502);
   }
-
-  await fetch(`${env('SUPABASE_URL')}/rest/v1/recruits?id=eq.${encodeURIComponent(r.id)}`, {
-    method: 'PATCH',
-    headers: {
-      apikey: env('SUPABASE_SERVICE_ROLE_KEY'),
-      Authorization: `Bearer ${env('SUPABASE_SERVICE_ROLE_KEY')}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
-    },
-    body: JSON.stringify({ notified_at: new Date().toISOString() }),
-  });
-
-  return new Response(JSON.stringify({ sent: to.length }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return json({ sent: to.length });
 });
