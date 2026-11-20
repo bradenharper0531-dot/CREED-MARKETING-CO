@@ -32,6 +32,25 @@ create policy "rep reads own door counts" on door_counts for select
 create policy "team lead reads team door counts" on door_counts for select
   using (public.is_my_team_rep(rep_id));
 
+-- "Other" objections, in the rep's own words (one row per tap).
+create table if not exists door_other_objections (
+  id uuid primary key default gen_random_uuid(),
+  rep_id uuid not null references reps (id) on delete cascade,
+  day date not null,
+  objection text not null check (char_length(objection) between 1 and 120),
+  created_at timestamptz not null default now()
+);
+create index if not exists door_other_objections_rep_day_idx on door_other_objections (rep_id, day);
+alter table door_other_objections enable row level security;
+drop policy if exists "owners read other objections" on door_other_objections;
+drop policy if exists "rep reads own other objections" on door_other_objections;
+drop policy if exists "team lead reads team other objections" on door_other_objections;
+create policy "owners read other objections" on door_other_objections for select using (is_owner());
+create policy "rep reads own other objections" on door_other_objections for select
+  using (exists (select 1 from reps r where r.id = rep_id and r.profile_id = auth.uid()));
+create policy "team lead reads team other objections" on door_other_objections for select
+  using (public.is_my_team_rep(rep_id));
+
 -- Which rep is the logged-in person? Matches the rep record linked to their login,
 -- or (if an owner added them before they signed up) the rep record with their email,
 -- and links it for next time. Owners and team leads knock doors too: the first time
@@ -63,9 +82,11 @@ begin
 end $$;
 
 -- One tap. kind = 'door' | 'objection' | 'sale'; delta = 1 (tap) or -1 (undo).
+-- For an 'other' objection, p_note is what they actually said (saved word for word).
 -- p_day is the rep's own calendar day (they're spread across time zones); it must be
 -- within a day of today so nobody back-fills old days.
-create or replace function public.track(p_kind text, p_day date, p_objection text default null, p_delta int default 1)
+drop function if exists public.track(text, date, text, int); -- replaced by the version with p_note
+create or replace function public.track(p_kind text, p_day date, p_objection text default null, p_delta int default 1, p_note text default null)
 returns door_counts
 language plpgsql security definer set search_path = public as $$
 declare
@@ -73,12 +94,26 @@ declare
   d int := case when p_delta < 0 then -1 else 1 end;
   o text := nullif(regexp_replace(lower(coalesce(p_objection, '')), '[^a-z_]', '', 'g'), '');
   row door_counts;
+  note text;
 begin
   select id into rid from public.my_rep();
   if rid is null then raise exception 'Your login isn''t linked to a rep yet. Ask Braden or Peter to add you as a rep with this email.'; end if;
   if p_kind not in ('door', 'objection', 'sale') then raise exception 'Unknown tap'; end if;
   if p_day is null or p_day < current_date - 1 or p_day > current_date + 1 then raise exception 'That day can''t be tracked'; end if;
   if o is not null and length(o) > 24 then o := left(o, 24); end if;
+  note := left(nullif(btrim(regexp_replace(coalesce(p_note, ''), '\s+', ' ', 'g')), ''), 120);
+
+  -- "Other": keep their words (undo removes the latest matching one)
+  if p_kind = 'objection' and o = 'other' and note is not null then
+    if d > 0 then
+      insert into door_other_objections (rep_id, day, objection) values (rid, p_day, note);
+    else
+      delete from door_other_objections where id = (
+        select id from door_other_objections
+        where rep_id = rid and day = p_day and lower(objection) = lower(note)
+        order by created_at desc limit 1);
+    end if;
+  end if;
 
   insert into door_counts (rep_id, day) values (rid, p_day) on conflict (rep_id, day) do nothing;
   update door_counts set
@@ -95,7 +130,7 @@ begin
   return row;
 end $$;
 
-revoke all on function public.track(text, date, text, int) from public, anon;
-grant execute on function public.track(text, date, text, int) to authenticated;
+revoke all on function public.track(text, date, text, int, text) from public, anon;
+grant execute on function public.track(text, date, text, int, text) to authenticated;
 revoke all on function public.my_rep() from public, anon;
 grant execute on function public.my_rep() to authenticated;

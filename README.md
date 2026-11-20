@@ -109,7 +109,8 @@ open **Door tracker** from the account menu (or go straight to `creedmarketing.o
 worth saving to their home screen) and tap as they go:
 - **Door** at every door they knock
 - the **objection** they got (Not interested, Price, Already has one, Spouse / not the decider,
-  Renting, Bad timing, Other)
+  Renting, Bad timing, or **Other**, which asks what they actually said: type it, or tap one
+  of their recent answers. Those show on the Overview under "Other, in their words")
 - **Sale** when they close
 - **Undo** takes back their last tap
 

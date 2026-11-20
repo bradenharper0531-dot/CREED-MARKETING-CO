@@ -23,12 +23,15 @@ export function Overview({ team = false }: { team?: boolean }) {
   const [f, setF] = useState<Filters>(DEFAULT_FILTERS);
   const [recruits, setRecruits] = useState<RecruitLite[]>([]);
   const [doorRows, setDoorRows] = useState<DoorCount[]>([]);
+  const [otherWords, setOtherWords] = useState<{ rep_id: string; day: string; objection: string }[]>([]);
 
   useEffect(() => {
     supabase?.from('recruits').select('stage, created_at, signed_at, next_follow_up').then(({ data }) => setRecruits((data as RecruitLite[]) ?? []));
     // reps' door tracker taps, one row per rep per day (the database only returns the reps this person may see)
     supabase?.from('door_counts').select('rep_id, day, doors, objections, sales, objection_mix').gte('day', ymd(addDays(new Date(), -200))).limit(20000)
       .then(({ data }) => setDoorRows((data as DoorCount[]) ?? []));
+    supabase?.from('door_other_objections').select('rep_id, day, objection').gte('day', ymd(addDays(new Date(), -200))).limit(5000)
+      .then(({ data }) => setOtherWords((data as { rep_id: string; day: string; objection: string }[]) ?? []));
   }, []);
 
   if (!reps) return <Loading />;
@@ -78,6 +81,10 @@ export function Overview({ team = false }: { team?: boolean }) {
   const rate = closeRate(door), pRate = closeRate(pDoor);
   const mix = Object.entries(door.mix).filter(([, n]) => n > 0).sort((a, z) => z[1] - a[1]);
   const mixMax = Math.max(1, ...mix.map(([, n]) => n));
+  // "Other" objections in the reps' own words, grouped (case-insensitive)
+  const otherGroups = [...otherWords.filter((o) => ids.has(o.rep_id) && o.day >= b.start && o.day <= b.end)
+    .reduce((m, o) => { const k = o.objection.toLowerCase(); const g = m.get(k) ?? { text: o.objection, n: 0 }; g.n++; return m.set(k, g); }, new Map<string, { text: string; n: number }>())
+    .values()].sort((a, z) => z.n - a.n).slice(0, 10);
   const doorByRep = rows
     .map((r) => ({ ...r, d: sumDoors(doorsIn(b.start, b.end).filter((x) => x.rep_id === r.id)) }))
     .filter((r) => r.d.doors + r.d.objections + r.d.sales > 0)
@@ -160,6 +167,19 @@ export function Overview({ team = false }: { team?: boolean }) {
                           <span className="text-right font-mono text-gold-glow">{n}</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {otherGroups.length > 0 && (
+                    <div className="mt-5">
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-gold-dim">&ldquo;Other&rdquo;, in their words</div>
+                      <ul className="space-y-1.5 text-sm">
+                        {otherGroups.map((g) => (
+                          <li key={g.text} className="flex gap-2">
+                            <span className="min-w-0 flex-1 text-ink">&ldquo;{g.text}&rdquo;</span>
+                            {g.n > 1 && <span className="font-mono text-gold-glow">×{g.n}</span>}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>

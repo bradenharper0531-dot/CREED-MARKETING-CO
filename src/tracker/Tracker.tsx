@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, DoorClosed, Handshake, Lock, RotateCcw, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, DoorClosed, Handshake, Lock, RotateCcw, ShieldAlert, X } from 'lucide-react';
 import { Logo } from '../components/Logo.tsx';
 import { useAuth } from '../lib/auth.tsx';
 import { isConfigured, supabase } from '../lib/supabase.ts';
@@ -13,7 +13,7 @@ import { addDays, weekStart, ymd } from '../dashboard/dates.ts';
    from your login. Undo reverses your last tap. */
 
 type Kind = 'door' | 'objection' | 'sale';
-type Tap = { kind: Kind; objection?: string };
+type Tap = { kind: Kind; objection?: string; note?: string }; // note: their words, for "Other"
 
 const EMPTY: DoorTotals = { doors: 0, objections: 0, sales: 0, mix: {} };
 
@@ -36,6 +36,9 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
   const [history, setHistory] = useState<Tap[]>([]);
   const [flash, setFlash] = useState<string>('');
   const [error, setError] = useState('');
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherText, setOtherText] = useState('');
+  const [recentOther, setRecentOther] = useState<string[]>([]); // their own recent "Other" answers, for one-tap reuse
   const day = useRef(ymd(new Date()));
   const flashTimer = useRef<number | undefined>(undefined);
 
@@ -53,6 +56,9 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
     const all = (rows as DoorCount[]) ?? [];
     setToday(sumDoors(all.filter((r) => r.day === day.current)));
     setWeek(sumDoors(all));
+    const { data: others } = await supabase.from('door_other_objections').select('objection').eq('rep_id', me.id)
+      .order('created_at', { ascending: false }).limit(60);
+    setRecentOther(dedupe(((others as { objection: string }[]) ?? []).map((o) => o.objection)).slice(0, 6));
   }, [profile]);
 
   useEffect(() => { load(); }, [load]);
@@ -69,11 +75,11 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
     setToday((t) => apply(t, tap, d));
     setWeek((t) => apply(t, tap, d));
     try { navigator.vibrate?.(d > 0 ? 12 : [8, 40, 8]); } catch { /* not supported */ }
-    const label = tap.kind === 'door' ? 'Door' : tap.kind === 'sale' ? 'Sale!' : objectionLabel(tap.objection ?? 'other');
+    const label = tap.kind === 'door' ? 'Door' : tap.kind === 'sale' ? 'Sale!' : tap.note ? `“${tap.note.length > 24 ? `${tap.note.slice(0, 24)}…` : tap.note}”` : objectionLabel(tap.objection ?? 'other');
     setFlash(d > 0 ? `+1 ${label}` : `Undid ${label.replace('!', '')}`);
     window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlash(''), 1200);
-    const { error } = await supabase.rpc('track', { p_kind: tap.kind, p_day: day.current, p_objection: tap.objection ?? null, p_delta: d });
+    const { error } = await supabase.rpc('track', { p_kind: tap.kind, p_day: day.current, p_objection: tap.objection ?? null, p_delta: d, p_note: tap.note ?? null });
     if (error) {
       setToday((t) => apply(t, tap, d === 1 ? -1 : 1));
       setWeek((t) => apply(t, tap, d === 1 ? -1 : 1));
@@ -83,6 +89,13 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
   };
 
   const tap = (t: Tap) => { setHistory((h) => [...h, t].slice(-50)); send(t, 1); };
+  const logOther = (words: string) => {
+    const note = words.replace(/\s+/g, ' ').trim().slice(0, 120);
+    tap({ kind: 'objection', objection: 'other', note: note || undefined });
+    if (note) setRecentOther((r) => dedupe([note, ...r]).slice(0, 6));
+    setOtherText('');
+    setOtherOpen(false);
+  };
   const undo = () => {
     const last = history[history.length - 1];
     if (!last) return;
@@ -161,7 +174,7 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
             {OBJECTIONS.map((o) => (
               <button
                 key={o.id}
-                onClick={() => tap({ kind: 'objection', objection: o.id })}
+                onClick={() => (o.id === 'other' ? setOtherOpen(true) : tap({ kind: 'objection', objection: o.id }))}
                 className={`relative min-h-[48px] rounded-lg border border-line bg-bg px-2 text-sm font-semibold text-ink transition active:scale-[0.97] active:border-gold active:text-gold ${o.id === 'other' ? 'col-span-2' : ''}`}
               >
                 {o.label}
@@ -189,6 +202,48 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
         </div>
       </main>
 
+      {/* "Other": what did they actually say? */}
+      {otherOpen && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70" onClick={() => setOtherOpen(false)}>
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-label="Other objection"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => { e.preventDefault(); if (otherText.trim()) logOther(otherText); }}
+            className="w-full rounded-t-2xl border-t border-line bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom))]"
+          >
+            <div className="mb-3 flex items-center">
+              <h2 className="font-display text-xl font-semibold uppercase tracking-[0.05em]">What did they say?</h2>
+              <button type="button" aria-label="Close" onClick={() => setOtherOpen(false)} className="ml-auto rounded-md p-1.5 text-ink-muted"><X className="h-5 w-5" /></button>
+            </div>
+            {recentOther.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {recentOther.map((r) => (
+                  <button key={r} type="button" onClick={() => logOther(r)} className="max-w-full truncate rounded-full border border-line bg-bg px-3 py-2 text-sm text-ink active:border-gold active:text-gold">
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              autoFocus
+              value={otherText}
+              onChange={(e) => setOtherText(e.target.value)}
+              maxLength={120}
+              enterKeyHint="done"
+              placeholder="e.g. Already signed with a competitor"
+              aria-label="Their objection, in their words"
+              className="w-full rounded-lg border border-line bg-bg px-3 py-3 text-base text-ink placeholder:text-ink-muted/60 focus:border-gold focus:outline-none"
+            />
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => logOther('')} className="min-h-[48px] flex-1 rounded-lg border border-line text-sm font-semibold text-ink-muted">Just log “Other”</button>
+              <button type="submit" disabled={!otherText.trim()} className="min-h-[48px] flex-[1.4] rounded-lg bg-gold text-sm font-semibold text-on-gold disabled:opacity-40">Save objection</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* tap confirmation + errors */}
       <div aria-live="assertive" className="pointer-events-none fixed inset-x-0 top-[200px] flex justify-center px-4">
         {error ? (
@@ -199,4 +254,9 @@ export function Tracker({ onSignIn }: { onSignIn: () => void }) {
       </div>
     </div>
   );
+}
+
+function dedupe(list: string[]) {
+  const seen = new Set<string>();
+  return list.filter((x) => { const k = x.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
 }
