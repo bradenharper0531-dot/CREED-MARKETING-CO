@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, LayoutDashboard, KanbanSquare, Users, BadgeDollarSign, Settings as Gear, Lock, LogOut } from 'lucide-react';
 import { Logo } from '../components/Logo.tsx';
 import { useAuth, initials, ROLE_LABEL } from '../lib/auth.tsx';
-import { isConfigured } from '../lib/supabase.ts';
+import { isConfigured, supabase } from '../lib/supabase.ts';
 import { DASH } from '../lib/route.ts';
 import { Overview } from './Overview.tsx';
 import { Pipeline } from './Pipeline.tsx';
@@ -19,12 +19,21 @@ const TABS = [
   { id: 'settings', label: 'Settings', icon: Gear },
 ] as const;
 
-/* The owner dashboard. Owners get every tab; team leads get the recruiting
-   pipeline only. The database refuses owner-only rows to everyone else, so
-   these gates are for a clean experience — the real lock is row-level security. */
+/* The owner dashboard. Owners get every tab. Team leads get the recruiting
+   pipeline, plus an Overview of the reps under them if an owner turned it on
+   (Settings → Team overview). The database refuses everything else, so these
+   gates are for a clean experience — the real lock is row-level security. */
 export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => void }) {
   const { profile, loading, signOut } = useAuth();
   const raw = hash.replace(DASH, '').replace(/^\//, '').split(/[/?]/)[0];
+  // null while checking; true if an owner gave this team lead an Overview of their reps
+  const [teamOverview, setTeamOverview] = useState<boolean | null>(null);
+  const leadId = profile?.role === 'lead' ? profile.id : null;
+  useEffect(() => {
+    if (!leadId || !supabase) return;
+    supabase.from('lead_overview').select('lead_id').eq('lead_id', leadId).maybeSingle()
+      .then(({ data }) => setTeamOverview(!!data));
+  }, [leadId]);
 
   const gate = (title: string, body: React.ReactNode, action?: React.ReactNode) => (
     <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-ink">
@@ -50,8 +59,10 @@ export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => vo
   if (profile.role === 'rep') return gate('Owners & team leads', `You're logged in as ${profile.email}, which is a rep account. The dashboard is for Creed's owners and team leads.`);
 
   const isOwner = profile.role === 'owner';
-  const tabs = isOwner ? TABS : TABS.filter((t) => t.id === 'pipeline');
-  const tab = isOwner ? raw : 'pipeline'; // team leads always land on the pipeline
+  if (!isOwner && teamOverview === null) return <div className="min-h-screen bg-bg"><Loading /></div>;
+  const tabs = isOwner ? TABS : TABS.filter((t) => t.id === 'pipeline' || (t.id === '' && teamOverview));
+  // anything a team lead isn't allowed lands on their first tab
+  const tab = tabs.some((t) => t.id === raw) ? raw : tabs[0].id;
 
   return (
     <div className="min-h-screen bg-bg text-ink">
@@ -94,7 +105,7 @@ export function Dashboard({ hash, onSignIn }: { hash: string; onSignIn: () => vo
       </header>
 
       <main className="mx-auto max-w-[1400px] px-4 py-8 sm:px-8">
-        {tab === 'pipeline' ? <Pipeline /> : tab === 'reps' ? <Reps /> : tab === 'rates' ? <Rates /> : tab === 'settings' ? <Settings /> : <Overview />}
+        {tab === 'pipeline' ? <Pipeline /> : tab === 'reps' ? <Reps /> : tab === 'rates' ? <Rates /> : tab === 'settings' ? <Settings /> : <Overview team={!isOwner} />}
       </main>
     </div>
   );

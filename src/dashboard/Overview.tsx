@@ -15,7 +15,9 @@ const OVERRIDE_PER_INSTALL = 25; // matches the calculator default
 
 type RecruitLite = { stage: Stage; created_at: string; signed_at: string | null; next_follow_up: string | null };
 
-export function Overview() {
+/* The group at a glance. Owners see everyone. A team lead (team=true) sees only the
+   reps under them; the database returns nothing else to them anyway. No override money. */
+export function Overview({ team = false }: { team?: boolean }) {
   const { reps, markets, stats, error } = useRepData();
   const [f, setF] = useState<Filters>(DEFAULT_FILTERS);
   const [recruits, setRecruits] = useState<RecruitLite[]>([]);
@@ -64,22 +66,27 @@ export function Overview() {
     };
   });
 
-  const leaders = [...rows].sort((a, z) => z.rangeSales - a.rangeSales).slice(0, 10);
+  const leaders = [...rows].sort((a, z) => z.rangeSales - a.rangeSales).slice(0, team ? 50 : 10);
   const label = { today: 'today', week: 'this week', month: 'this month', season: 'this season' }[f.range];
   const stageCounts = STAGES.map((s) => ({ ...s, n: recruits.filter((r) => r.stage === s.id).length }));
 
   return (
     <>
-      <PageHead tag="Overview" title={`The group, ${label}.`} />
+      <PageHead tag={team ? 'Team overview' : 'Overview'} title={team ? `Your team, ${label}.` : `The group, ${label}.`} />
       <FilterBar value={f} onChange={setF} markets={markets} />
       {error && <div className="mb-4"><ErrorNote message={error} /></div>}
+      {team && reps.length === 0 && (
+        <div className="mb-6 rounded-[10px] border border-dashed border-line p-6 text-center text-sm text-ink-muted">
+          No reps are under you yet. Braden or Peter can add reps to your team, and their numbers will show up here.
+        </div>
+      )}
 
       <div className="space-y-6">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <Stat k="Total sales" v={sales.toLocaleString()} sub={<Delta now={sales} prev={pSales} />} />
           <Stat k="Installs" v={installs.toLocaleString()} sub={<Delta now={installs} prev={pInstalls} />} />
           <Stat k="Connect rate" v={sales ? `${connect}%` : '—'} sub={<Delta now={connect} prev={pConnect} />} />
-          <Stat k="Active reps" v={active} sub={<span className="text-ink-muted">{rows.length} total</span>} />
+          <Stat k={team ? 'Active on your team' : 'Active reps'} v={active} sub={<span className="text-ink-muted">{rows.length} total</span>} />
           <Stat k="Applications" v={applied} sub={<Delta now={applied} prev={pApplied} />} />
           <Stat k="Recruits signed" v={signed} sub={<Delta now={signed} prev={pSigned} />} />
         </div>
@@ -97,12 +104,12 @@ export function Overview() {
                 </div>
               ))}
               {overdue > 0 && <p className="pt-1 text-sm font-semibold text-[#d9705f]">{overdue} follow-up{overdue > 1 ? 's' : ''} overdue</p>}
-              <div className="pt-2"><Stat k="Projected override, this month" v={money(projected)} sub={<span className="text-ink-muted">${OVERRIDE_PER_INSTALL} per install, paced to month end</span>} /></div>
+              {!team && <div className="pt-2"><Stat k="Projected override, this month" v={money(projected)} sub={<span className="text-ink-muted">${OVERRIDE_PER_INSTALL} per install, paced to month end</span>} /></div>}
             </div>
           </Card>
         </div>
 
-        <Card tag="Leaderboard" title="Top 10" right={<a href={`${DASH}/reps`} className="inline-flex items-center gap-1 text-sm font-semibold text-gold hover:text-gold-glow">All reps <ArrowRight className="h-4 w-4" /></a>}>
+        <Card tag="Leaderboard" title={team ? 'Your team' : 'Top 10'} right={team ? undefined : <a href={`${DASH}/reps`} className="inline-flex items-center gap-1 text-sm font-semibold text-gold hover:text-gold-glow">All reps <ArrowRight className="h-4 w-4" /></a>}>
           {leaders.length === 0 ? (
             <p className="p-6 text-center text-sm text-ink-muted">No reps match these filters.</p>
           ) : (

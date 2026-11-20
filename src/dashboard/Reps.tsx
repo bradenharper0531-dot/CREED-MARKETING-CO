@@ -25,6 +25,12 @@ export function Reps() {
   const [sort, setSort] = useState<{ k: Key; dir: 1 | -1 }>({ k: 'month', dir: -1 });
   const [open, setOpen] = useState<string | 'new' | null>(null);
   const [importing, setImporting] = useState(false);
+  const [leads, setLeads] = useState<TeamLead[]>([]);
+
+  useEffect(() => {
+    supabase?.from('profiles').select('id, full_name, email').eq('role', 'lead').order('full_name')
+      .then(({ data }) => setLeads((data as TeamLead[]) ?? []));
+  }, []);
 
   const rows = useMemo(() => (reps ? buildRows(reps, markets, stats, f) : []), [reps, markets, stats, f]);
   const shown = useMemo(() => {
@@ -107,6 +113,7 @@ export function Reps() {
         <RepPanel
           rep={open === 'new' ? null : current}
           markets={markets}
+          leads={leads}
           history={open === 'new' ? [] : stats.filter((s) => s.rep_id === open).sort((a, b) => (a.day < b.day ? -1 : 1))}
           onChanged={reload}
           onClose={() => setOpen(null)}
@@ -117,7 +124,10 @@ export function Reps() {
   );
 }
 
-function RepPanel({ rep, markets, history, onChanged, onClose }: { rep: RepRow | null; markets: MarketRow[]; history: RepStat[]; onChanged: () => void; onClose: () => void }) {
+type TeamLead = { id: string; full_name: string | null; email: string };
+const leadName = (leads: TeamLead[], id: string | null) => { const l = leads.find((x) => x.id === id); return l ? l.full_name || l.email : '—'; };
+
+function RepPanel({ rep, markets, leads, history, onChanged, onClose }: { rep: RepRow | null; markets: MarketRow[]; leads: TeamLead[]; history: RepStat[]; onChanged: () => void; onClose: () => void }) {
   const actor = useActor();
   const [editing, setEditing] = useState(!rep);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -148,6 +158,7 @@ function RepPanel({ rep, markets, history, onChanged, onClose }: { rep: RepRow |
       name: s('name', 120) ?? 'Unnamed', email, profile_id, phone: s('phone', 40),
       industry: fd.get('industry') === 'pest' ? 'pest' : 'fiber',
       market_id: s('market_id', 60), recruited_by: by === 'Braden' || by === 'Peter' ? by : null,
+      lead_id: leads.some((l) => l.id === s('lead_id', 60)) ? s('lead_id', 60) : null,
       start_date: s('start_date', 10), status: fd.get('status') === 'inactive' ? 'inactive' : 'active',
     };
     setBusy(true);
@@ -213,6 +224,12 @@ function RepPanel({ rep, markets, history, onChanged, onClose }: { rep: RepRow |
               </select>
             </Field>
             <Field label="Recruited by"><select name="recruited_by" defaultValue={rep?.recruited_by ?? ''} className={input}><option value="">—</option><option>Braden</option><option>Peter</option></select></Field>
+            <Field label="Team lead" hint={leads.length ? undefined : 'Make someone a team lead in Settings first'}>
+              <select name="lead_id" defaultValue={rep?.lead_id ?? ''} className={input}>
+                <option value="">— None</option>
+                {leads.map((l) => <option key={l.id} value={l.id}>{l.full_name || l.email}</option>)}
+              </select>
+            </Field>
             <Field label="Start date"><input name="start_date" type="date" defaultValue={rep?.start_date ?? ymd(new Date())} className={`${input} font-mono`} /></Field>
             <Field label="Status"><select name="status" defaultValue={rep?.status ?? 'active'} className={input}><option value="active">Active</option><option value="inactive">Inactive</option></select></Field>
           </div>
@@ -228,6 +245,7 @@ function RepPanel({ rep, markets, history, onChanged, onClose }: { rep: RepRow |
             <dt className="text-ink-muted">Industry</dt><dd><IndTag industry={rep.industry} /></dd>
             <dt className="text-ink-muted">Market</dt><dd>{rep.marketName}</dd>
             <dt className="text-ink-muted">Recruited by</dt><dd>{rep.recruited_by ?? '—'}</dd>
+            <dt className="text-ink-muted">Team lead</dt><dd>{leadName(leads, rep.lead_id)}</dd>
             <dt className="text-ink-muted">Started</dt><dd className="font-mono">{shortDate(rep.start_date)}</dd>
             <dt className="text-ink-muted">Phone</dt><dd className="font-mono">{rep.phone ? <a className="hover:text-gold" href={`tel:${rep.phone.replace(/[^\d+]/g, '')}`}>{rep.phone}</a> : '—'}</dd>
             <dt className="text-ink-muted">Email</dt><dd>{rep.email ?? '—'} {rep.profile_id && <span className="text-xs" style={{ color: TONE.signed }}>· linked to login</span>}</dd>

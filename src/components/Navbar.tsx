@@ -56,8 +56,8 @@ function AccountMenu() {
               </a>
             )}
             {profile.role === 'lead' && (
-              <a href={`${DASH}/pipeline`} onClick={() => setOpen(false)} className={item}>
-                <LayoutDashboard className="h-4 w-4 text-gold" /> Recruiting pipeline
+              <a href={DASH} onClick={() => setOpen(false)} className={item}>
+                <LayoutDashboard className="h-4 w-4 text-gold" /> Team dashboard
               </a>
             )}
             <button onClick={() => { setOpen(false); signOut(); }} className={item}>
@@ -204,7 +204,7 @@ export function Navbar({ onApplyClick, onContactClick, onSignInClick }: NavbarPr
                     <a href={DASH} onClick={() => setMobileMenuOpen(false)} className="text-left text-ink-muted hover:text-gold py-1 text-[15px]">Owner dashboard</a>
                   )}
                   {profile.role === 'lead' && (
-                    <a href={`${DASH}/pipeline`} onClick={() => setMobileMenuOpen(false)} className="text-left text-ink-muted hover:text-gold py-1 text-[15px]">Recruiting pipeline</a>
+                    <a href={DASH} onClick={() => setMobileMenuOpen(false)} className="text-left text-ink-muted hover:text-gold py-1 text-[15px]">Team dashboard</a>
                   )}
                   <button
                     onClick={() => {

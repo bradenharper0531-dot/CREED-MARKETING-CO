@@ -87,6 +87,19 @@ You can also switch anyone's role from the dropdown in the **Everyone with a log
 Team leads open the pipeline from their account menu (**Recruiting pipeline**). The database
 enforces all of this, so a team lead can't reach rates, reps or settings even by typing the URL.
 
+## Team lead overviews
+
+**1. Database (once).** Supabase → SQL Editor → run `supabase/team-overview.sql`. Safe to re-run.
+
+**2. Put reps under a team lead.** Owner dashboard → **Reps** → a rep → **Edit** → **Team lead**.
+
+**3. Turn a team lead's Overview on.** Owner dashboard → **Settings** → **Team overview** → **Overview on**.
+
+That team lead then gets an **Overview** tab (sales, installs, connect rate, the weekly chart and a
+leaderboard) for only the reps under them. Read-only: they can't edit reps or log numbers, and never
+see contract rates, margins, override money, rep notes or anyone else's reps. Turning it off, or
+removing them as a team lead, takes it away immediately. The database enforces all of this.
+
 ## Apply
 
 Every application lands in the owner dashboard's **Pipeline** as a *New lead*, emails

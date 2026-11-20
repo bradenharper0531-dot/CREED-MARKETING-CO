@@ -1,16 +1,18 @@
 -- =====================================================================
 -- Creed Marketing — database schema
 -- Run this whole file once in Supabase: Dashboard → SQL Editor → New query.
--- Then run seed.sql, apply.sql, team-leads.sql and application-v2.sql. Safe to re-run: it drops and recreates Creed objects.
+-- Then run seed.sql, apply.sql, team-leads.sql, application-v2.sql and team-overview.sql. Safe to re-run: it drops and recreates Creed objects.
 -- =====================================================================
 
 -- ---------- 0. Clean slate (only Creed objects) ----------
 drop trigger if exists on_auth_user_created on auth.users;
 drop table if exists rep_notes, rep_stats, reps, recruit_notes, recruits,
-  pillar_checkins, plan_inputs, market_rates, markets, profiles, owner_emails, lead_emails cascade;
+  pillar_checkins, plan_inputs, market_rates, markets, profiles, owner_emails, lead_emails, lead_overview cascade;
 drop function if exists public.is_owner() cascade;
 drop function if exists public.can_recruit() cascade;
 drop function if exists public.sync_lead_emails() cascade;
+drop function if exists public.on_my_team(uuid) cascade;
+drop function if exists public.is_my_team_rep(uuid) cascade;
 drop function if exists public.handle_new_user() cascade;
 drop function if exists public.guard_profile_role() cascade;
 drop function if exists public.sync_owner_emails() cascade;

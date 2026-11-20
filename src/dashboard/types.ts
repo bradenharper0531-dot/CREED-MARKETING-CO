@@ -68,6 +68,7 @@ export interface Rep {
   industry: 'fiber' | 'pest';
   market_id: string | null;
   recruited_by: OwnerName | null;
+  lead_id: string | null; // team lead this rep is under (supabase/team-overview.sql)
   start_date: string | null;
   status: 'active' | 'inactive';
   is_sample: boolean;
