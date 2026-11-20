@@ -34,7 +34,9 @@ create policy "team lead reads team door counts" on door_counts for select
 
 -- Which rep is the logged-in person? Matches the rep record linked to their login,
 -- or (if an owner added them before they signed up) the rep record with their email,
--- and links it for next time.
+-- and links it for next time. Owners and team leads knock doors too: the first time
+-- one of them opens the tracker, a rep record is made for them automatically
+-- (industry Fiber to start; change it in Reps).
 create or replace function public.my_rep() returns table (id uuid, name text)
 language plpgsql security definer set search_path = public as $$
 declare
@@ -49,6 +51,11 @@ begin
     if r.id is not null and r.profile_id is null then
       update reps set profile_id = me.id where reps.id = r.id;
     end if;
+  end if;
+  if r.id is null and me.role in ('owner', 'lead') then
+    insert into reps (profile_id, name, email, industry, status)
+    values (me.id, coalesce(nullif(me.full_name, ''), split_part(me.email, '@', 1)), me.email, 'fiber', 'active')
+    returning * into r;
   end if;
   if r.id is null then return; end if;
   id := r.id; name := r.name;
