@@ -14,6 +14,7 @@ export function useHash() {
 }
 
 export const DASH = '#/dashboard';
+export const TRACK = '#/track'; // the reps' door tracker
 
 export function go(hash: string) {
   window.location.hash = hash;

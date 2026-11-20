@@ -14,13 +14,24 @@ import { ApplyModal } from './components/ApplyModal.tsx';
 import { ContactModal } from './components/ContactModal.tsx';
 import { SignInModal } from './components/SignInModal.tsx';
 import { Dashboard } from './dashboard/Dashboard.tsx';
-import { useHash, DASH } from './lib/route.ts';
+import { Tracker } from './tracker/Tracker.tsx';
+import { useHash, DASH, TRACK } from './lib/route.ts';
 
 export default function App() {
   const [isApplyOpen, setIsApplyOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const hash = useHash();
+
+  /* Door tracker: /#/track (any rep — see src/tracker) */
+  if (hash.startsWith(TRACK)) {
+    return (
+      <>
+        <Tracker onSignIn={() => setIsSignInOpen(true)} />
+        <SignInModal isOpen={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
+      </>
+    );
+  }
 
   /* Owner dashboard: /#/dashboard (owners only — see src/dashboard) */
   if (hash.startsWith(DASH)) {

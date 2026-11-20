@@ -9,7 +9,8 @@ import { addDays, rangeBounds, weekStart, ymd } from './dates.ts';
 import { WeeklyBars } from './charts.tsx';
 import { STAGES, stageTone, type Stage } from './types.ts';
 import { Card, Delta, ErrorNote, IndTag, Loading, Pill, SampleTag, Stat } from './ui.tsx';
-import { DASH } from '../lib/route.ts';
+import { DASH, TRACK } from '../lib/route.ts';
+import { closeRate, objectionLabel, sumDoors, type DoorCount } from '../lib/doors.ts';
 
 const OVERRIDE_PER_INSTALL = 25; // matches the calculator default
 
@@ -21,9 +22,13 @@ export function Overview({ team = false }: { team?: boolean }) {
   const { reps, markets, stats, error } = useRepData();
   const [f, setF] = useState<Filters>(DEFAULT_FILTERS);
   const [recruits, setRecruits] = useState<RecruitLite[]>([]);
+  const [doorRows, setDoorRows] = useState<DoorCount[]>([]);
 
   useEffect(() => {
     supabase?.from('recruits').select('stage, created_at, signed_at, next_follow_up').then(({ data }) => setRecruits((data as RecruitLite[]) ?? []));
+    // reps' door tracker taps, one row per rep per day (the database only returns the reps this person may see)
+    supabase?.from('door_counts').select('rep_id, day, doors, objections, sales, objection_mix').gte('day', ymd(addDays(new Date(), -200))).limit(20000)
+      .then(({ data }) => setDoorRows((data as DoorCount[]) ?? []));
   }, []);
 
   if (!reps) return <Loading />;
@@ -66,6 +71,18 @@ export function Overview({ team = false }: { team?: boolean }) {
     };
   });
 
+  // door tracker, for the same reps, filters and range
+  const doorsIn = (from: string, to: string) => doorRows.filter((d) => ids.has(d.rep_id) && d.day >= from && d.day <= to);
+  const door = sumDoors(doorsIn(b.start, b.end));
+  const pDoor = sumDoors(doorsIn(b.prevStart, b.prevEnd));
+  const rate = closeRate(door), pRate = closeRate(pDoor);
+  const mix = Object.entries(door.mix).filter(([, n]) => n > 0).sort((a, z) => z[1] - a[1]);
+  const mixMax = Math.max(1, ...mix.map(([, n]) => n));
+  const doorByRep = rows
+    .map((r) => ({ ...r, d: sumDoors(doorsIn(b.start, b.end).filter((x) => x.rep_id === r.id)) }))
+    .filter((r) => r.d.doors + r.d.objections + r.d.sales > 0)
+    .sort((a, z) => z.d.doors - a.d.doors);
+
   const leaders = [...rows].sort((a, z) => z.rangeSales - a.rangeSales).slice(0, team ? 50 : 10);
   const label = { today: 'today', week: 'this week', month: 'this month', season: 'this season' }[f.range];
   const stageCounts = STAGES.map((s) => ({ ...s, n: recruits.filter((r) => r.stage === s.id).length }));
@@ -90,6 +107,66 @@ export function Overview({ team = false }: { team?: boolean }) {
           <Stat k="Applications" v={applied} sub={<Delta now={applied} prev={pApplied} />} />
           <Stat k="Recruits signed" v={signed} sub={<Delta now={signed} prev={pSigned} />} />
         </div>
+
+        <Card tag="Door tracker" title="Doors, objections & sales" right={<a href={TRACK} className="inline-flex items-center gap-1 text-sm font-semibold text-gold hover:text-gold-glow">Open tracker <ArrowRight className="h-4 w-4" /></a>}>
+          <div className="space-y-5 p-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Stat k="Doors knocked" v={door.doors.toLocaleString()} sub={<Delta now={door.doors} prev={pDoor.doors} />} />
+              <Stat k="Objections" v={door.objections.toLocaleString()} sub={<Delta now={door.objections} prev={pDoor.objections} />} />
+              <Stat k="Sales (tracked)" v={door.sales.toLocaleString()} sub={<Delta now={door.sales} prev={pDoor.sales} />} />
+              <Stat k="Close rate" v={rate == null ? '—' : `${rate}%`} sub={<span className="text-ink-muted">{rate == null ? 'no doors yet' : pRate == null ? 'sales ÷ doors' : `${pRate}% previous`}</span>} />
+            </div>
+            {doorByRep.length === 0 ? (
+              <p className="rounded-md border border-dashed border-line p-5 text-center text-sm text-ink-muted">
+                No taps {label} yet. Reps open <b className="text-ink">Door tracker</b> from their account menu (or creedmarketing.org/#/track) on their phone and tap as they go.
+              </p>
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
+                <div className="overflow-x-auto rounded-md border border-line">
+                  <table className="w-full text-sm tabular">
+                    <thead className="text-left text-[11px] uppercase tracking-[0.08em] text-ink-muted">
+                      <tr className="border-b border-line [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold">
+                        <th>Rep</th><th className="text-right">Doors</th><th className="text-right">Objections</th><th className="text-right">Sales</th><th className="text-right">Close</th><th>Top objection</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {doorByRep.map((r) => {
+                        const top = Object.entries(r.d.mix).sort((a, z) => z[1] - a[1])[0];
+                        const cr = closeRate(r.d);
+                        return (
+                          <tr key={r.id} className="border-b border-line last:border-0 [&>td]:px-3 [&>td]:py-2">
+                            <td className="font-semibold">{r.name}</td>
+                            <td className="text-right font-mono text-gold-glow">{r.d.doors}</td>
+                            <td className="text-right font-mono">{r.d.objections}</td>
+                            <td className="text-right font-mono">{r.d.sales}</td>
+                            <td className="text-right font-mono">{cr == null ? '—' : `${cr}%`}</td>
+                            <td className="text-ink-muted">{top && top[1] > 0 ? `${objectionLabel(top[0])} (${top[1]})` : '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-gold-dim">What they&apos;re hearing</div>
+                  {mix.length === 0 ? (
+                    <p className="text-sm text-ink-muted">No objections logged {label}.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {mix.map(([k, n]) => (
+                        <div key={k} className="grid grid-cols-[150px_1fr_40px] items-center gap-2 text-sm">
+                          <span className="truncate">{objectionLabel(k)}</span>
+                          <span className="h-2.5 rounded-full bg-surface-raised"><span className="block h-full rounded-full bg-gold" style={{ width: `${(n / mixMax) * 100}%` }} /></span>
+                          <span className="text-right font-mono text-gold-glow">{n}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
 
         <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
           <Card tag="Trend" title="Sales by week" right={<span className="font-mono text-xs text-ink-muted">Last 12 weeks</span>}>

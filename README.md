@@ -100,6 +100,26 @@ leaderboard) for only the reps under them. Read-only: they can't edit reps or lo
 see contract rates, margins, override money, rep notes or anyone else's reps. Turning it off, or
 removing them as a team lead, takes it away immediately. The database enforces all of this.
 
+## Door tracker
+
+**1. Database (once).** Supabase → SQL Editor → run `supabase/door-tracker.sql`. Safe to re-run.
+
+**2. Reps.** Add each rep in **Reps** with the email they log in with. On their phone they log in,
+open **Door tracker** from the account menu (or go straight to `creedmarketing.org/#/track`,
+worth saving to their home screen) and tap as they go:
+- **Door** at every door they knock
+- the **objection** they got (Not interested, Price, Already has one, Spouse / not the decider,
+  Renting, Bad timing, Other)
+- **Sale** when they close
+- **Undo** takes back their last tap
+
+**3. Who sees it.** Owners see everyone on the **Overview** (doors, objections, tracked sales, close
+rate, per-rep table and what objections the group is hearing), using the same filters. Team leads with
+Overview on see the same for the reps under them. Reps only see their own numbers. Taps go through the
+database's `track()` function, which works out which rep you are from your login, so nobody can log
+numbers for someone else or change past days. "Sales (tracked)" is what reps tapped; the official
+sales/installs you log in Reps stay separate.
+
 ## Apply
 
 Every application lands in the owner dashboard's **Pipeline** as a *New lead*, emails

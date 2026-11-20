@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Logo } from './Logo.tsx';
-import { Menu, X, LogOut, LayoutDashboard, Calculator } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, Calculator, DoorClosed } from 'lucide-react';
 import { useAuth, initials, ROLE_LABEL } from '../lib/auth.tsx';
-import { DASH } from '../lib/route.ts';
+import { DASH, TRACK } from '../lib/route.ts';
 
 /* Signed-in account button + dropdown (desktop) */
 function AccountMenu() {
@@ -47,6 +47,9 @@ function AccountMenu() {
             </span>
           </div>
           <div className="pt-1.5">
+            <a href={TRACK} onClick={() => setOpen(false)} className={item}>
+              <DoorClosed className="h-4 w-4 text-gold" /> Door tracker
+            </a>
             <a href="#calculator" onClick={() => setOpen(false)} className={item}>
               <Calculator className="h-4 w-4 text-gold" /> {profile.role === 'owner' ? 'Margin plan' : 'My growth plan'}
             </a>
@@ -200,6 +203,7 @@ export function Navbar({ onApplyClick, onContactClick, onSignInClick }: NavbarPr
                     Logged in as <span className="text-ink">{profile.fullName || profile.email}</span>{' '}
                     <span className="font-mono text-[11px] uppercase text-gold">· {ROLE_LABEL[profile.role]}</span>
                   </p>
+                  <a href={TRACK} onClick={() => setMobileMenuOpen(false)} className="text-left text-gold hover:text-gold-glow py-1 text-[15px] font-semibold">Door tracker</a>
                   {profile.role === 'owner' && (
                     <a href={DASH} onClick={() => setMobileMenuOpen(false)} className="text-left text-ink-muted hover:text-gold py-1 text-[15px]">Owner dashboard</a>
                   )}
