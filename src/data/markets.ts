@@ -13,7 +13,7 @@ export const CALC_MARKETS: CalcMarket[] = [
   },
   { name: 'Arizona', leads: null, connect: 80, connectLabel: '80% (depends on ISP)', provider: 'Varies by ISP', base: 150, cap: 225, step: 20, bump: 25, basis: 'sold', pace: 2 },
   { name: 'Minnesota', leads: null, connect: 80, connectLabel: '80% (est.)', provider: null, base: 150, cap: 225, step: 20, bump: 25, basis: 'sold', pace: 2 },
-  { name: 'Indiana', leads: null, connect: 90, connectLabel: '90%', provider: 'T-Fiber', base: 150, cap: 225, step: 20, bump: 25, basis: 'sold', pace: 2 },
+  { name: 'Indiana', leads: 'Hundreds of thousands across the state', connect: 90, connectLabel: '90%', provider: 'T-Fiber', base: 225, cap: 300, step: 20, bump: 25, basis: 'sold', pace: 2 },
   { name: 'Missouri', leads: null, connect: 80, connectLabel: '80% (est.)', provider: null, base: 150, cap: 225, step: 20, bump: 25, basis: 'sold', pace: 2 },
 ];
 
